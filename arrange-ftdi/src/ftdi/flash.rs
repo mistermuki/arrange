@@ -1,4 +1,8 @@
-use log::{debug, error};
+use std::{thread::sleep, time::Duration};
+
+use log::{debug, error, info};
+
+use crate::cli::block_erase::BlockErase;
 
 use super::mpsse::MPSSE;
 
@@ -178,5 +182,206 @@ impl<'a> Flash<'a> {
         self.chip_select();
         self.mpsse.transfer_spi(&mut data);
         self.chip_deselect();
+    }
+
+    pub fn read_status(&self) -> u8 {
+        let mut data: [u8; 2] = [FlashCommand::RSR1 as u8; 2];
+
+        self.chip_select();
+        self.mpsse.transfer_spi(&mut data);
+        self.chip_deselect();
+
+        debug!("SR1: {:#02X}", data[1]);
+        debug!(
+            "SPRL: {}",
+            if data[1] & (1 << 7) == 0 {
+                "Unlocked"
+            } else {
+                "Locked"
+            }
+        );
+        debug!(
+            "SPM: {}",
+            if data[1] & (1 << 6) == 0 {
+                "Byte/Page Prog Mode"
+            } else {
+                "Sequential Prog Mode"
+            }
+        );
+        debug!(
+            "EPE: {}",
+            if data[1] & (1 << 5) == 0 {
+                "Erase/Prog Success"
+            } else {
+                "Erase/Prog Error"
+            }
+        );
+        debug!(
+            "SPM: {}",
+            if data[1] & (1 << 4) == 0 {
+                "!WP Asserted"
+            } else {
+                "!WP Deasserted"
+            }
+        );
+        debug!(
+            "SWP: {}",
+            match data[1] >> 2 & 0x3 {
+                0 => "All sectors unprotected",
+                1 => "Some sectors protected",
+                2 => "Reserved (xxxx 10xx)",
+                3 => "All sectors protected",
+                _ => "Unexpected value, ignoring...",
+            }
+        );
+        debug!(
+            "WEL: {}",
+            if data[1] & (1 << 1) == 0 {
+                "Not Write Enabled"
+            } else {
+                "Write Enabled"
+            }
+        );
+        debug!(
+            "RDY: {}",
+            if data[1] & (1 << 0) == 0 {
+                "Ready"
+            } else {
+                "Busy"
+            }
+        );
+
+        data[1]
+    }
+
+    pub fn write_enable(&self) -> () {
+        debug!("Status before enable: {}", self.read_status());
+        debug!("Enabling Write...");
+
+        let mut data: [u8; 1] = [FlashCommand::WE as u8];
+        self.chip_select();
+        self.mpsse.transfer_spi(&mut data);
+        self.chip_deselect();
+
+        //debug!("Status after enable: {}", self.read_status());
+    }
+
+    pub fn bulk_erase(&self) -> () {
+        info!("Bulk Erase...");
+
+        let mut data: [u8; 1] = [FlashCommand::CE as u8];
+        self.chip_select();
+        self.mpsse.transfer_spi(&mut data);
+        self.chip_deselect();
+    }
+
+    pub fn sector_erase(&self, be: BlockErase, addr: usize) -> () {
+        info!("Erase {be}kB sector at {:#06X}", addr);
+
+        let command: [u8; 4] = match be {
+            BlockErase::FourK => [
+                FlashCommand::SE as u8,
+                (addr >> 16) as u8,
+                (addr >> 8) as u8,
+                addr as u8,
+            ],
+            BlockErase::ThirtyTwoK => [
+                FlashCommand::BE32 as u8,
+                (addr >> 16) as u8,
+                (addr >> 8) as u8,
+                addr as u8,
+            ],
+            BlockErase::SixtyFourK => [
+                FlashCommand::BE64 as u8,
+                (addr >> 16) as u8,
+                (addr >> 8) as u8,
+                addr as u8,
+            ],
+        };
+
+        self.chip_select();
+        self.mpsse.send_spi(&command);
+        self.chip_deselect();
+    }
+
+    pub fn prog(&self, addr: usize, data: &[u8]) -> () {
+        debug!("prog {:#06X} +{:#03X}", addr, data.len());
+
+        let cmd: [u8; 4] = [
+            FlashCommand::PP as u8,
+            (addr >> 16) as u8,
+            (addr >> 8) as u8,
+            addr as u8,
+        ];
+
+        self.chip_select();
+        self.mpsse.send_spi(&cmd);
+        self.mpsse.send_spi(data);
+        self.chip_deselect();
+
+        let mut debug_str = String::new();
+
+        for i in 0..data.len() {
+            debug_str.push_str(&format!(
+                "{:#02x}{}",
+                data[i],
+                if i == data.len() - 1 || i % 32 == 31 {
+                    '\n'
+                } else {
+                    ' '
+                }
+            ));
+        }
+        debug!("\n{}", debug_str.trim_end_matches('\n'));
+    }
+
+    pub fn wait(&self) -> () {
+        debug!("Waiting...");
+
+        let mut count = 0;
+
+        loop {
+            let mut data: [u8; 2] = [FlashCommand::RSR1 as u8; 2];
+            self.chip_select();
+            self.mpsse.transfer_spi(&mut data);
+            self.chip_deselect();
+
+            if data[1] & 0x01 == 0 {
+                if count < 2 {
+                    count += 1;
+                    debug!("read: {count}");
+                } else {
+                    debug!("R: {count}");
+                    break;
+                }
+            } else {
+                debug!("retrying wait...");
+                count = 0;
+            }
+
+            sleep(Duration::from_millis(1));
+        }
+    }
+
+    pub fn disable_protection(&self) -> () {
+        info!("Disable Flash Protection...");
+
+        let mut data: [u8; 2] = [FlashCommand::WSR1 as u8, 0];
+        self.chip_select();
+        self.mpsse.transfer_spi(&mut data);
+        self.chip_deselect();
+        self.wait();
+
+        data[0] = FlashCommand::RSR1 as u8;
+        self.chip_select();
+        self.mpsse.transfer_spi(&mut data);
+        self.chip_deselect();
+
+        if data[1] != 0 {
+            error!(
+                "Failed to disable protection, SR now equal to {:#02x} (expected 0x00)",
+                data[1]
+            );
+        }
     }
 }

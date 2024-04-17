@@ -1,6 +1,5 @@
-use core::fmt;
-
 use super::error::GenericArgumentError;
+use core::fmt;
 
 pub fn block_erase_parser(arg: &str) -> Result<BlockErase, GenericArgumentError> {
     match arg {
@@ -15,17 +14,13 @@ pub fn block_erase_parser(arg: &str) -> Result<BlockErase, GenericArgumentError>
 
 #[derive(Clone, Copy, Debug)]
 pub enum BlockErase {
-    FourK,
-    ThirtyTwoK,
-    SixtyFourK,
+    FourK = 4,
+    ThirtyTwoK = 32,
+    SixtyFourK = 64,
 }
 
 impl fmt::Display for BlockErase {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            BlockErase::FourK => write!(f, "4"),
-            BlockErase::ThirtyTwoK => write!(f, "32"),
-            BlockErase::SixtyFourK => write!(f, "64"),
-        }
+        write!(f, "{}", (*self as usize).to_string())
     }
 }

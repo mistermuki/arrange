@@ -74,6 +74,7 @@ pub enum MPSSECommand {
 }
 
 /// Encapsulates all of the MPSSE (Multi-Protocol Synchronous Serial Engine) instructions used.
+
 pub struct MPSSE {
     context: *mut ftdi_context,
     latency: c_uchar,
@@ -215,19 +216,6 @@ impl MPSSE {
         }
     }
 
-    /// Writes a byte to the FTDI Device.
-    pub fn send_byte(&self, data: u8) {
-        let data_ptr: *const u8 = &data;
-        let write_count = unsafe { ftdi_write_data(self.context, data_ptr, 1) };
-        if write_count != 1 {
-            error!(
-                "Error writing byte to FTDI. Expected {} bytes to be written, only got {}",
-                1, write_count
-            );
-            self.error(2);
-        }
-    }
-
     /// Blocks while waiting to receive a byte.
     pub fn recv_byte(&self) -> u8 {
         let mut data: u8 = 0;
@@ -247,6 +235,40 @@ impl MPSSE {
         }
 
         data
+    }
+
+    /// Writes a byte to the FTDI Device.
+    pub fn send_byte(&self, data: u8) {
+        let data_ptr: *const u8 = &data;
+        let write_count = unsafe { ftdi_write_data(self.context, data_ptr, 1) };
+        if write_count != 1 {
+            error!(
+                "Error writing byte to FTDI. Expected {} bytes to be written, only got {}",
+                1, write_count
+            );
+            self.error(2);
+        }
+    }
+
+    pub fn send_spi(&self, data: &[u8]) {
+        if data.len() < 1 {
+            return;
+        }
+
+        self.send_byte(MPSSE::DATA_OUT | MPSSE::DATA_OCN);
+        self.send_byte((data.len() - 1) as u8);
+        self.send_byte(((data.len() - 1) >> 8) as u8);
+
+        let data_ptr: *const u8 = data.as_ptr();
+        let write_count = unsafe { ftdi_write_data(self.context, data_ptr, data.len() as c_int) };
+        if write_count != data.len() as i32 {
+            error!(
+                "Error writing data. Expected {} bytes to be written, only got {}",
+                data.len(),
+                write_count
+            );
+            self.error(2);
+        }
     }
 
     pub fn transfer_spi(&self, data: &mut [u8]) {

@@ -2,7 +2,6 @@ use super::{block_erase::{block_erase_parser, BlockErase}, ftdi_interface::ftdi_
 use clap::Parser;
 use libftdi1_sys::ftdi_interface;
 
-
 #[derive(Parser, Debug)]
 pub struct Arguments {
     #[arg(default_value = "")]
@@ -10,7 +9,12 @@ pub struct Arguments {
 
     #[arg(short)]
     pub device_string: Option<String>,
-    #[arg(short = 'i', default_value_t = BlockErase::SixtyFourK, help = "select erase block size",value_parser = block_erase_parser)]
+    #[arg(
+        short = 'i',
+        default_value_t = BlockErase::SixtyFourK,
+        help = "select erase block size",
+        value_parser = block_erase_parser
+    )]
     pub block_erase_size: BlockErase, 
     #[arg(
         short = 'I',
@@ -19,10 +23,18 @@ pub struct Arguments {
         value_parser = ftdi_interface_parser 
     )]
     pub ftdi_chip_interface_select: ftdi_interface, 
-    #[arg(short = 'r', default_value_t = false, help = "reads 256 bytes from flash")]
+    #[arg(
+        short = 'r',
+        default_value_t = false,
+        help = "reads 256 bytes from flash"
+    )]
     pub read_mode: bool,
-    #[arg(short = 'R', help = "reads N bytes from flash")]
-    pub read_n_bytes: Option<usize>,
+    #[arg(
+        short = 'R',
+        default_value_t = 256,
+        help = "reads N bytes from flash"
+    )]
+    pub read_n_bytes: usize, 
     #[arg(short = 'e')]
     pub erase_blocks: Option<usize>,
     // Do we want to support k and M endings?
@@ -50,7 +62,6 @@ pub struct Arguments {
         )]
     pub test_mode: TestMode,  
 
-    /// Farts!
     #[arg(short = 'v', default_value_t = false)]
     pub verbose: bool,
 
