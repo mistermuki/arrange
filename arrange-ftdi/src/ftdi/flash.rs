@@ -128,42 +128,48 @@ impl<'a> Flash<'a> {
          *        4 | Ext Dev Str Len
          */
 
-        let mut data: Vec<u8> = vec![FlashCommand::JEDECID as u8; 5];
-        let mut len = 5;
+        let data: [u8; 5] = [FlashCommand::JEDECID as u8; 5];
         debug!("Read Flash ID...");
         self.chip_select();
-        self.mpsse.transfer_spi(&mut data[..5]);
 
-        if data[4] == 0xff {
-            error!(
+        let jedec = self.mpsse.transfer_spi(&data[..5]);
+
+        let e_dev = {
+            if jedec[4] == 0xff {
+                error!(
                 "Extended Device String Length is 0xFF, this is likely a read error. Ignoring..."
             );
-        } else if data[4] != 0 {
-            // We should read out the rest of the bytes...
-            len += data[4] as usize;
-            data.extend(vec![0; data[4] as usize]);
-            debug!("Extending flash data to be of size: {}", data.len());
-            self.mpsse.transfer_spi(&mut data[4..len]);
-        }
+                panic!()
+            } else if jedec[4] != 0 {
+                // We should read out the rest of the bytes...
+                debug!("Getting Extended Device String of length: {}", jedec[4]);
+                self.mpsse.transfer_spi(&vec![0; jedec[4] as usize])
+            } else {
+                panic!()
+            }
+        };
 
-        debug!("Flash MFG ID: {:#x}", data[1]);
-        debug!("Flash Dev ID #1: {:#x}", data[2]);
-        debug!("Flash Dev ID #2: {:#x}", data[3]);
-        debug!("Flash Extended Dev String Length: {:#X}", data[4]);
+        debug!("Flash MFG ID: {:#x}", jedec[1]);
+        debug!("Flash Dev ID #1: {:#x}", jedec[2]);
+        debug!("Flash Dev ID #2: {:#x}", jedec[3]);
+        debug!("Flash Extended Dev String Length: {:#X}", jedec[4]);
 
         let mut flash_id: String = String::new();
-        for d in data[1..len - 1].into_iter() {
-            flash_id.push_str(&format!("{:02X}", d));
+        flash_id.push_str(&format!("{:#02X} ", jedec[1]));
+        flash_id.push_str(&format!("{:#02X} ", jedec[2]));
+        flash_id.push_str(&format!("{:#02X} ", jedec[3]));
+        for d in e_dev[1..e_dev.len()].into_iter() {
+            flash_id.push_str(&format!("{:#02X} ", d));
         }
 
         info!("Flash ID: {flash_id}");
     }
 
     pub fn reset(&self) -> () {
-        let mut data: [u8; 8] = [0xff; 8];
+        let cmd: [u8; 8] = [0xff; 8];
 
         self.chip_select();
-        self.mpsse.transfer_spi(&mut data);
+        self.mpsse.transfer_spi(&cmd);
         self.chip_deselect();
 
         self.chip_select();
@@ -172,30 +178,29 @@ impl<'a> Flash<'a> {
     }
 
     pub fn power_up(&self) -> () {
-        let mut data: [u8; 1] = [FlashCommand::RPD as u8];
+        let cmd: [u8; 1] = [FlashCommand::RPD as u8];
         self.chip_select();
-        self.mpsse.transfer_spi(&mut data);
+        self.mpsse.transfer_spi(&cmd);
         self.chip_deselect();
     }
 
     pub fn power_down(&self) -> () {
-        let mut data: [u8; 1] = [FlashCommand::PD as u8];
+        let cmd: [u8; 1] = [FlashCommand::PD as u8];
         self.chip_select();
-        self.mpsse.transfer_spi(&mut data);
+        self.mpsse.transfer_spi(&cmd);
         self.chip_deselect();
     }
 
     pub fn read_status(&self) -> u8 {
-        let mut data: [u8; 2] = [FlashCommand::RSR1 as u8; 2];
-
+        let cmd: [u8; 2] = [FlashCommand::RSR1 as u8; 2];
         self.chip_select();
-        self.mpsse.transfer_spi(&mut data);
+        let response = self.mpsse.transfer_spi(&cmd);
         self.chip_deselect();
 
-        debug!("SR1: {:#02X}", data[1]);
+        debug!("SR1: {:#02X}", response[1]);
         debug!(
             "SPRL: {}",
-            if data[1] & (1 << 7) == 0 {
+            if response[1] & (1 << 7) == 0 {
                 "Unlocked"
             } else {
                 "Locked"
@@ -203,7 +208,7 @@ impl<'a> Flash<'a> {
         );
         debug!(
             "SPM: {}",
-            if data[1] & (1 << 6) == 0 {
+            if response[1] & (1 << 6) == 0 {
                 "Byte/Page Prog Mode"
             } else {
                 "Sequential Prog Mode"
@@ -211,7 +216,7 @@ impl<'a> Flash<'a> {
         );
         debug!(
             "EPE: {}",
-            if data[1] & (1 << 5) == 0 {
+            if response[1] & (1 << 5) == 0 {
                 "Erase/Prog Success"
             } else {
                 "Erase/Prog Error"
@@ -219,7 +224,7 @@ impl<'a> Flash<'a> {
         );
         debug!(
             "SPM: {}",
-            if data[1] & (1 << 4) == 0 {
+            if response[1] & (1 << 4) == 0 {
                 "!WP Asserted"
             } else {
                 "!WP Deasserted"
@@ -227,7 +232,7 @@ impl<'a> Flash<'a> {
         );
         debug!(
             "SWP: {}",
-            match data[1] >> 2 & 0x3 {
+            match response[1] >> 2 & 0x3 {
                 0 => "All sectors unprotected",
                 1 => "Some sectors protected",
                 2 => "Reserved (xxxx 10xx)",
@@ -237,7 +242,7 @@ impl<'a> Flash<'a> {
         );
         debug!(
             "WEL: {}",
-            if data[1] & (1 << 1) == 0 {
+            if response[1] & (1 << 1) == 0 {
                 "Not Write Enabled"
             } else {
                 "Write Enabled"
@@ -245,34 +250,32 @@ impl<'a> Flash<'a> {
         );
         debug!(
             "RDY: {}",
-            if data[1] & (1 << 0) == 0 {
+            if response[1] & (1 << 0) == 0 {
                 "Ready"
             } else {
                 "Busy"
             }
         );
 
-        data[1]
+        response[1]
     }
 
     pub fn write_enable(&self) -> () {
         debug!("Status before enable: {}", self.read_status());
         debug!("Enabling Write...");
 
-        let mut data: [u8; 1] = [FlashCommand::WE as u8];
+        let cmd: [u8; 1] = [FlashCommand::WE as u8];
         self.chip_select();
-        self.mpsse.transfer_spi(&mut data);
+        self.mpsse.transfer_spi(&cmd);
         self.chip_deselect();
-
-        //debug!("Status after enable: {}", self.read_status());
     }
 
     pub fn bulk_erase(&self) -> () {
         info!("Bulk Erase...");
 
-        let mut data: [u8; 1] = [FlashCommand::CE as u8];
+        let cmd: [u8; 1] = [FlashCommand::CE as u8];
         self.chip_select();
-        self.mpsse.transfer_spi(&mut data);
+        self.mpsse.transfer_spi(&cmd);
         self.chip_deselect();
     }
 
@@ -342,12 +345,12 @@ impl<'a> Flash<'a> {
         let mut count = 0;
 
         loop {
-            let mut data: [u8; 2] = [FlashCommand::RSR1 as u8; 2];
+            let cmd: [u8; 2] = [FlashCommand::RSR1 as u8; 2];
             self.chip_select();
-            self.mpsse.transfer_spi(&mut data);
+            let response = self.mpsse.transfer_spi(&cmd);
             self.chip_deselect();
 
-            if data[1] & 0x01 == 0 {
+            if response[1] & 0x01 == 0 {
                 if count < 2 {
                     count += 1;
                     debug!("read: {count}");
@@ -366,21 +369,21 @@ impl<'a> Flash<'a> {
     pub fn disable_protection(&self) -> () {
         info!("Disable Flash Protection...");
 
-        let mut data: [u8; 2] = [FlashCommand::WSR1 as u8, 0];
+        let cmd: [u8; 2] = [FlashCommand::WSR1 as u8, 0];
         self.chip_select();
-        self.mpsse.transfer_spi(&mut data);
+        self.mpsse.transfer_spi(&cmd);
         self.chip_deselect();
         self.wait();
 
-        data[0] = FlashCommand::RSR1 as u8;
+        let cmd2: [u8; 2] = [FlashCommand::RSR1 as u8, 0];
         self.chip_select();
-        self.mpsse.transfer_spi(&mut data);
+        let response = self.mpsse.transfer_spi(&cmd2);
         self.chip_deselect();
 
-        if data[1] != 0 {
+        if response[1] != 0 {
             error!(
                 "Failed to disable protection, SR now equal to {:#02x} (expected 0x00)",
-                data[1]
+                response[1]
             );
         }
     }
