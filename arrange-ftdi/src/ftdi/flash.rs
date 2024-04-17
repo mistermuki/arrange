@@ -1,20 +1,7 @@
-/*
-    Parts of this file utilize code from and/or inspired by https://github.com/YosysHQ/icestorm.
+use log::{debug, error};
 
-    Copyright (C) 2012 - 2022  Claire Xenia Wolf <claire@yosyshq.com>
+use super::mpsse::MPSSE;
 
-    Permission to use, copy, modify, and/or distribute this software for any
-    purpose with or without fee is hereby granted, provided that the above
-    copyright notice and this permission notice appear in all copies.
-
-    THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
-    WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
-    MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR
-    ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
-    WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
-    ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
-    OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
-*/
 pub enum FlashCommand {
     ///  Write Enable
     WE = 0x06,
@@ -88,4 +75,108 @@ pub enum FlashCommand {
     ERESET = 0x66,
     ///  Reset Device
     RESET = 0x99,
+}
+
+pub struct Flash<'a> {
+    mpsse: &'a MPSSE,
+}
+
+impl<'a> Flash<'a> {
+    pub fn new(mpsse: &'a MPSSE) -> Self {
+        Self { mpsse }
+    }
+
+    fn set_cs_creset(&self, cs_b: u32, creset_b: u32) -> () {
+        let gpio: u8 = 0;
+        let mut direction: u8 = 0x03;
+
+        if cs_b == 0 {
+            direction |= 0x10;
+        }
+
+        if creset_b == 0 {
+            direction |= 0x80;
+        }
+
+        self.mpsse.set_gpio(gpio, direction);
+    }
+
+    pub fn release_reset(&self) -> () {
+        self.set_cs_creset(1, 1);
+    }
+
+    pub fn chip_select(&self) -> () {
+        self.set_cs_creset(0, 0);
+    }
+
+    pub fn chip_deselect(&self) -> () {
+        self.set_cs_creset(1, 0);
+    }
+
+    pub fn read_id(&self) -> () {
+        /* JEDEC ID structure:
+         * Byte No. | Data Type
+         * ---------+----------
+         *        0 | FC_JEDECID Request Command
+         *        1 | MFG ID
+         *        2 | Dev ID 1
+         *        3 | Dev ID 2
+         *        4 | Ext Dev Str Len
+         */
+
+        let mut data: Vec<u8> = vec![FlashCommand::JEDECID as u8; 5];
+        let mut len = 5;
+        debug!("Read Flash ID...");
+        self.chip_select();
+        self.mpsse.transfer_spi(&mut data[..5]);
+
+        if data[4] == 0xff {
+            error!(
+                "Extended Device String Length is 0xFF, this is likely a read error. Ignoring..."
+            );
+        } else if data[4] != 0 {
+            // We should read out the rest of the bytes...
+            len += data[4] as usize;
+            data.extend(vec![0; data[4] as usize]);
+            debug!("Extending flash data to be of size: {}", data.len());
+            self.mpsse.transfer_spi(&mut data[4..len]);
+        }
+
+        debug!("Flash MFG ID: {:#x}", data[1]);
+        debug!("Flash Dev ID #1: {:#x}", data[2]);
+        debug!("Flash Dev ID #2: {:#x}", data[3]);
+        debug!("Flash Extended Dev String Length: {:#X}", data[4]);
+
+        print!("Flash ID: ");
+        for d in data[1..len - 1].into_iter() {
+            print!("{:#02X} ", d);
+        }
+        println!();
+    }
+
+    pub fn reset(&self) -> () {
+        let mut data: [u8; 8] = [0xff; 8];
+
+        self.chip_select();
+        self.mpsse.transfer_spi(&mut data);
+        self.chip_deselect();
+
+        self.chip_select();
+        self.mpsse.transfer_spi_bits(0xff, 2);
+        self.chip_deselect();
+    }
+
+    pub fn power_up(&self) -> () {
+        let mut data: [u8; 1] = [FlashCommand::RPD as u8];
+        self.chip_select();
+        self.mpsse.transfer_spi(&mut data);
+        self.chip_deselect();
+    }
+
+    pub fn power_down(&self) -> () {
+        let mut data: [u8; 1] = [FlashCommand::PD as u8];
+        self.chip_select();
+        self.mpsse.transfer_spi(&mut data);
+        self.chip_deselect();
+    }
 }

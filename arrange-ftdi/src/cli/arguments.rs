@@ -1,10 +1,11 @@
-use super::{block_erase::{block_erase_parser, BlockErase}, ftdi_interface::ftdi_interface_parser};
+use super::{block_erase::{block_erase_parser, BlockErase}, ftdi_interface::ftdi_interface_parser, test_mode::{test_mode_parser, TestMode}};
 use clap::Parser;
 use libftdi1_sys::ftdi_interface;
 
+
 #[derive(Parser, Debug)]
 pub struct Arguments {
-    #[arg()]
+    #[arg(default_value = "")]
     pub file_name: String,
 
     #[arg(short)]
@@ -41,12 +42,13 @@ pub struct Arguments {
     pub prog_sram: bool,
 
     // test_mode = 1
-    #[arg(short = 't', default_value_t = false)]
-    pub test_mode: bool,
-
-    // test_mode = 2
-    #[arg(short = 'T', default_value_t = false)]
-    pub q_test_mode: bool,
+    #[arg(
+        short = 't',
+        default_value_t = TestMode::NoTest,
+        help = "Test Modes",
+        value_parser = test_mode_parser,
+        )]
+    pub test_mode: TestMode,  
 
     /// Farts!
     #[arg(short = 'v', default_value_t = false)]

@@ -1,4 +1,5 @@
 pub mod arguments;
-mod ftdi_interface; 
-mod block_erase;
+pub mod ftdi_interface; 
+pub mod block_erase;
+pub mod test_mode;
 mod error;

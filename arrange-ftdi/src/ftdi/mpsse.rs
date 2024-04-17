@@ -1,13 +1,15 @@
 use std::{
     ffi::{c_int, c_uchar},
     process::exit,
+    thread::sleep,
+    time::Duration,
 };
 
 use libftdi1_sys::{
     ftdi_context, ftdi_deinit, ftdi_disable_bitbang, ftdi_get_error_string, ftdi_get_latency_timer,
-    ftdi_init, ftdi_interface, ftdi_mpsse_mode, ftdi_new, ftdi_set_bitmode, ftdi_set_interface,
-    ftdi_set_latency_timer, ftdi_usb_close, ftdi_usb_open, ftdi_usb_purge_buffers, ftdi_usb_reset,
-    ftdi_write_data,
+    ftdi_init, ftdi_interface, ftdi_mpsse_mode, ftdi_new, ftdi_read_data, ftdi_set_bitmode,
+    ftdi_set_interface, ftdi_set_latency_timer, ftdi_usb_close, ftdi_usb_open,
+    ftdi_usb_purge_buffers, ftdi_usb_reset, ftdi_write_data,
 };
 use log::{debug, error, info};
 
@@ -15,13 +17,13 @@ use log::{debug, error, info};
 #[derive(Copy, Clone)]
 #[repr(u8)]
 pub enum MPSSECommand {
-    ///  Set Data bits LowByte
+    ///  Set Data bits Low Byte
     SETBLOW = 0x80,
-    ///  Read Data bits LowByte
+    ///  Read Data bits Low Byte
     READBLOW = 0x81,
-    ///  Set Data bits HighByte
+    ///  Set Data bits High Byte
     SETBHIGH = 0x82,
-    ///  Read data bits HighByte
+    ///  Read data bits High Byte
     READBHIGH = 0x83,
     ///  Enable loopback
     LOOPBACKEN = 0x84,
@@ -83,6 +85,21 @@ impl MPSSE {
     const FTDI_VENDOR: c_int = 0x0403;
     const DEVICE_ID_1: c_int = 0x6010;
     const DEVICE_ID_2: c_int = 0x6014;
+
+    ///  When set use TMS mode
+    const DATA_TMS: u8 = 0x40;
+    ///  When set read data (Data IN)
+    const DATA_IN: u8 = 0x20;
+    ///  When set write data (Data OUT)
+    const DATA_OUT: u8 = 0x10;
+    ///  When set input/output data LSB first.
+    const DATA_LSB: u8 = 0x08;
+    ///  When set receive data on negative clock edge
+    const DATA_ICN: u8 = 0x04;
+    ///  When set count bits not bytes
+    const DATA_BITS: u8 = 0x02;
+    ///  When set update data on negative clock edge
+    const DATA_OCN: u8 = 0x01;
 
     pub fn new() -> Self {
         Self {
@@ -181,23 +198,25 @@ impl MPSSE {
         }
 
         // clock divide by 5.
-        self.write_byte(MPSSECommand::TCKD5 as u8);
+        // maybe don't? could potentially be faster...
+        // TODO: i should generate an echo benchmark.
+        self.send_byte(MPSSECommand::TCKD5 as u8);
 
         if slow_clock {
             info!("Setting FTDI USB to Slow Mode: 50 kHz");
-            self.write_byte(MPSSECommand::SETCLKDIV as u8);
-            self.write_byte(119);
-            self.write_byte(0);
+            self.send_byte(MPSSECommand::SETCLKDIV as u8);
+            self.send_byte(119);
+            self.send_byte(0);
         } else {
             info!("Setting FTDI USB to Normal Mode: 6 MHz");
-            self.write_byte(MPSSECommand::SETCLKDIV as u8);
-            self.write_byte(0);
-            self.write_byte(0);
+            self.send_byte(MPSSECommand::SETCLKDIV as u8);
+            self.send_byte(0);
+            self.send_byte(0);
         }
     }
 
     /// Writes a byte to the FTDI Device.
-    pub fn write_byte(&self, data: u8) {
+    pub fn send_byte(&self, data: u8) {
         let data_ptr: *const u8 = &data;
         let write_count = unsafe { ftdi_write_data(self.context, data_ptr, 1) };
         if write_count != 1 {
@@ -207,6 +226,76 @@ impl MPSSE {
             );
             self.error(2);
         }
+    }
+
+    /// Blocks while waiting to receive a byte.
+    pub fn recv_byte(&self) -> u8 {
+        let mut data: u8 = 0;
+        let data_ptr: *mut u8 = &mut data;
+        loop {
+            let read_count = unsafe { ftdi_read_data(self.context, data_ptr, 1) };
+            if read_count < 0 {
+                error!("Read Error!");
+                self.error(2)
+            }
+
+            if read_count == 1 {
+                break;
+            }
+
+            sleep(Duration::from_millis(1));
+        }
+
+        data
+    }
+
+    pub fn transfer_spi(&self, data: &mut [u8]) {
+        if data.len() < 1 {
+            return;
+        }
+
+        self.send_byte(MPSSE::DATA_IN | MPSSE::DATA_OUT | MPSSE::DATA_OCN);
+        self.send_byte(data.len() as u8 - 1);
+        self.send_byte(((data.len() - 1) >> 8) as u8);
+
+        let data_ptr: *const u8 = data.as_ptr();
+        let write_count = unsafe { ftdi_write_data(self.context, data_ptr, data.len() as c_int) };
+        if write_count != data.len() as i32 {
+            error!(
+                "Error writing data to FTDI. Expected {} bytes to be written, only got {}",
+                data.len(),
+                write_count
+            );
+            self.error(2);
+        }
+
+        for i in 0..data.len() {
+            data[i] = self.recv_byte();
+        }
+    }
+
+    pub fn transfer_spi_bits(&self, data: u8, n: u8) -> u8 {
+        self.send_byte(MPSSE::DATA_IN | MPSSE::DATA_OUT | MPSSE::DATA_OCN | MPSSE::DATA_BITS);
+        self.send_byte(n - 1);
+        self.send_byte(data);
+
+        self.recv_byte()
+    }
+
+    pub fn set_gpio(&self, gpio: u8, direction: u8) -> () {
+        self.send_byte(MPSSECommand::SETBLOW as u8);
+        self.send_byte(gpio);
+        self.send_byte(direction);
+    }
+
+    pub fn read_low_byte(&self) -> u8 {
+        self.send_byte(MPSSECommand::READBLOW as u8);
+        self.recv_byte()
+    }
+
+    pub fn read_high_byte(&self) -> u8 {
+        self.send_byte(MPSSECommand::READBHIGH as u8);
+        self.recv_byte()
     }
 
     /// This closes our FTDI context.
