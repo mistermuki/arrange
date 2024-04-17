@@ -75,19 +75,19 @@ pub fn main() {
     // Create MPSSE object
     let mut mpsse = MPSSE::new();
 
-    println!("Initializing MPSSE...");
+    eprintln!("Initializing MPSSE...");
     mpsse.init(
         args.ftdi_chip_interface_select,
         args.device_string,
         args.slow_clock,
     );
-    println!("MPSSE initialized.");
+    eprintln!("MPSSE initialized.");
     read_cdone!(mpsse);
 
     let flash = Flash::new(&mpsse);
     flash.release_reset();
     sleep(Duration::from_millis(100));
-    println!("Reset...");
+    eprintln!("Reset...");
 
     if args.test_mode != TestMode::NoTest {
         // If in test mode...
@@ -128,16 +128,23 @@ pub fn main() {
                     flash.wait();
                 } else {
                     // Erase enough for the file.
-                    println!("File Size: {file_size}");
+                    eprintln!("File Size: {file_size}");
                     let block_size = (args.block_erase_size as usize) << 10;
-                    println!("Block Size: {block_size}");
+                    eprintln!("Block Size: {block_size}");
                     let block_mask = block_size - 1;
                     let begin_addr = args.address_offset & !block_mask;
                     let end_addr = (args.address_offset + file_size + block_mask) & !block_mask;
 
                     for addr in (begin_addr..end_addr).step_by(block_size) {
                         flash.write_enable();
-                        flash.sector_erase(BlockErase::SixtyFourK, addr);
+                        flash.sector_erase(
+                            match args.block_erase_size {
+                                cli::block_erase::BlockErase::FourK => BlockErase::FourK,
+                                cli::block_erase::BlockErase::ThirtyTwoK => BlockErase::ThirtyTwoK,
+                                cli::block_erase::BlockErase::SixtyFourK => BlockErase::SixtyFourK,
+                            },
+                            addr,
+                        );
 
                         debug!("Status after Block Erase: {}", flash.read_status());
                         flash.wait();
@@ -146,7 +153,7 @@ pub fn main() {
             }
 
             if args.erase_blocks.is_none() {
-                println!("Programming...");
+                eprintln!("Programming...");
 
                 let mut addr = 0;
                 'chunks: loop {
@@ -176,7 +183,7 @@ pub fn main() {
                     addr += read_count;
                 }
 
-                println!("done.");
+                eprintln!("done.");
                 f.seek(std::io::SeekFrom::Start(0)).unwrap();
             }
         }

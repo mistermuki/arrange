@@ -151,11 +151,12 @@ impl<'a> Flash<'a> {
         debug!("Flash Dev ID #2: {:#x}", data[3]);
         debug!("Flash Extended Dev String Length: {:#X}", data[4]);
 
-        print!("Flash ID: ");
+        let mut flash_id: String = String::new();
         for d in data[1..len - 1].into_iter() {
-            print!("{:#02X} ", d);
+            flash_id.push_str(&format!("{:02X}", d));
         }
-        println!();
+
+        info!("Flash ID: {flash_id}");
     }
 
     pub fn reset(&self) -> () {
@@ -355,7 +356,6 @@ impl<'a> Flash<'a> {
                     break;
                 }
             } else {
-                debug!("retrying wait...");
                 count = 0;
             }
 
