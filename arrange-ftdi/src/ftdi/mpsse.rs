@@ -1,0 +1,234 @@
+use std::{
+    ffi::{c_int, c_uchar},
+    process::exit,
+};
+
+use libftdi1_sys::{
+    ftdi_context, ftdi_deinit, ftdi_disable_bitbang, ftdi_get_error_string, ftdi_get_latency_timer,
+    ftdi_init, ftdi_interface, ftdi_mpsse_mode, ftdi_new, ftdi_set_bitmode, ftdi_set_interface,
+    ftdi_set_latency_timer, ftdi_usb_close, ftdi_usb_open, ftdi_usb_purge_buffers, ftdi_usb_reset,
+    ftdi_write_data,
+};
+use log::{debug, error, info};
+
+/// Mode commands
+#[derive(Copy, Clone)]
+#[repr(u8)]
+pub enum MPSSECommand {
+    ///  Set Data bits LowByte
+    SETBLOW = 0x80,
+    ///  Read Data bits LowByte
+    READBLOW = 0x81,
+    ///  Set Data bits HighByte
+    SETBHIGH = 0x82,
+    ///  Read data bits HighByte
+    READBHIGH = 0x83,
+    ///  Enable loopback
+    LOOPBACKEN = 0x84,
+    ///  Disable loopback
+    LOOPBACKDIS = 0x85,
+    ///  Set clock divisor
+    SETCLKDIV = 0x86,
+    ///  Flush buffer fifos to the PC.
+    FLUSH = 0x87,
+    ///  Wait on GPIOL1 to go high.
+    WAITH = 0x88,
+    ///  Wait on GPIOL1 to go low.
+    WAITL = 0x89,
+    ///  Disable /5 div, enables 60MHz master clock
+    TCKX5 = 0x8A,
+    ///  Enable /5 div, backward compat to FT2232D
+    TCKD5 = 0x8B,
+    ///  Enable 3 phase clk, DDR I2C
+    EN3PHCLK = 0x8C,
+    ///  Disable 3 phase clk
+    DIS3PHCLK = 0x8D,
+    ///  Clock every bit, used for JTAG
+    CLKN = 0x8E,
+    ///  Clock every byte, used for JTAG
+    CLKN8 = 0x8F,
+    ///  Clock until GPIOL1 goes high
+    CLKTOH = 0x94,
+    ///  Clock until GPIOL1 goes low
+    CLKTOL = 0x95,
+    ///  Enable adaptive clocking
+    ENADPTCLK = 0x96,
+    ///  Disable adaptive clocking
+    DISADPTCLK = 0x97,
+    ///  Clock until GPIOL1 goes high, count bytes
+    CLK8TOH = 0x9C,
+    ///  Clock until GPIOL1 goes low, count bytes
+    CLK8TOL = 0x9D,
+    ///  Set IO to only drive on 0 and tristate on 1
+    TRI = 0x9E,
+    ///  CPUMode read short address
+    CPURS = 0x90,
+    ///  CPUMode read extended address
+    CPURE = 0x91,
+    ///  CPUMode write short address
+    CPUWS = 0x92,
+    ///  CPUMode write extended address
+    CPUWE = 0x93,
+}
+
+/// Encapsulates all of the MPSSE (Multi-Protocol Synchronous Serial Engine) instructions used.
+pub struct MPSSE {
+    context: *mut ftdi_context,
+    latency: c_uchar,
+    open: bool,
+    latency_set: bool,
+}
+
+impl MPSSE {
+    const FTDI_VENDOR: c_int = 0x0403;
+    const DEVICE_ID_1: c_int = 0x6010;
+    const DEVICE_ID_2: c_int = 0x6014;
+
+    pub fn new() -> Self {
+        Self {
+            context: unsafe { ftdi_new() },
+            latency: b'0',
+            open: false,
+            latency_set: false,
+        }
+    }
+
+    pub fn init(
+        &mut self,
+        interface: ftdi_interface,
+        device_string: Option<String>,
+        slow_clock: bool,
+    ) {
+        unsafe { ftdi_init(self.context) };
+        unsafe { ftdi_set_interface(self.context, interface) };
+
+        // Opening the USB connection with the FTDI device.
+        match device_string {
+            Some(_) => todo!("Implement Device String"),
+            None => {
+                let status_1 =
+                    unsafe { ftdi_usb_open(self.context, MPSSE::FTDI_VENDOR, MPSSE::DEVICE_ID_1) };
+                debug!(
+                    "Status of ftdi_usb_open on Device ID: {:#x} is: {status_1}",
+                    MPSSE::DEVICE_ID_1
+                );
+                let status_2 =
+                    unsafe { ftdi_usb_open(self.context, MPSSE::FTDI_VENDOR, MPSSE::DEVICE_ID_2) };
+                debug!(
+                    "Status of ftdi_usb_open on Device ID: {:#x} is: {status_2}",
+                    MPSSE::DEVICE_ID_2
+                );
+
+                if status_1 != 0 && status_2 != 0 {
+                    error!(
+                        "can't find iCE FTDI USB Device (vendor_id {:#x} with device ids {:#x} or {:#x})",
+                        MPSSE::FTDI_VENDOR,
+                        MPSSE::DEVICE_ID_1,
+                        MPSSE::DEVICE_ID_2,
+                    );
+                    self.error(2);
+                }
+            }
+        }
+
+        self.open = true;
+
+        // Try to reset the FTDI Chip.
+        let reset_status = unsafe { ftdi_usb_reset(self.context) };
+        debug!("FTDI USB Reset Status: {reset_status}");
+        if reset_status != 0 {
+            error!("Failed to reset iCE FTDI USB device.\n");
+            self.error(2);
+        }
+
+        // Purge USB Buffers.
+        let purge_status = unsafe { ftdi_usb_purge_buffers(self.context) };
+        debug!("FTDI USB Buffer Purge Status: {reset_status}");
+        if purge_status != 0 {
+            error!("Failed to purge buffers on iCE FTDI USB device.\n");
+            self.error(2);
+        }
+
+        // Gets the latency.
+        let latency_ptr: *mut c_uchar = &mut self.latency;
+        let get_latency_status = unsafe { ftdi_get_latency_timer(self.context, latency_ptr) };
+        debug!("FTDI USB Get Latency Status: {get_latency_status}");
+        debug!("FTDI USB Latency Value: {:#x}", self.latency);
+        if get_latency_status != 0 {
+            error!("Failed to get latency timer: {:?}.", unsafe {
+                ftdi_get_error_string(self.context)
+            });
+            self.error(2);
+        }
+
+        // Sets the latency to 1 kHz polling.
+        let set_latency_status = unsafe { ftdi_set_latency_timer(self.context, 1) };
+        debug!("FTDI USB Set Latency Status: {set_latency_status}");
+        if set_latency_status != 0 {
+            error!("Failed to get latency timer: {:?}.", unsafe {
+                ftdi_get_error_string(self.context)
+            });
+            self.error(2);
+        }
+        self.latency_set = true;
+
+        let set_mpsse_mode_status =
+            unsafe { ftdi_set_bitmode(self.context, 0xff, ftdi_mpsse_mode::BITMODE_MPSSE.0 as u8) };
+        debug!("FTDI USB Set MPSSE Mode Status: {set_mpsse_mode_status}");
+        if set_mpsse_mode_status != 0 {
+            error!("Failed to set MPSSE mode on iCE FTDI USB device.\n");
+            self.error(2)
+        }
+
+        // clock divide by 5.
+        self.write_byte(MPSSECommand::TCKD5 as u8);
+
+        if slow_clock {
+            info!("Setting FTDI USB to Slow Mode: 50 kHz");
+            self.write_byte(MPSSECommand::SETCLKDIV as u8);
+            self.write_byte(119);
+            self.write_byte(0);
+        } else {
+            info!("Setting FTDI USB to Normal Mode: 6 MHz");
+            self.write_byte(MPSSECommand::SETCLKDIV as u8);
+            self.write_byte(0);
+            self.write_byte(0);
+        }
+    }
+
+    /// Writes a byte to the FTDI Device.
+    pub fn write_byte(&self, data: u8) {
+        let data_ptr: *const u8 = &data;
+        let write_count = unsafe { ftdi_write_data(self.context, data_ptr, 1) };
+        if write_count != 1 {
+            error!(
+                "Error writing byte to FTDI. Expected {} bytes to be written, only got {}",
+                1, write_count
+            );
+            self.error(2);
+        }
+    }
+
+    /// This closes our FTDI context.
+    pub fn close(&self) -> () {
+        unsafe { ftdi_set_latency_timer(self.context, self.latency) };
+        unsafe { ftdi_disable_bitbang(self.context) };
+        unsafe { ftdi_usb_close(self.context) };
+        unsafe { ftdi_deinit(self.context) };
+    }
+
+    /// On error, we need to close down the FTDI context and exit from the program.
+    pub fn error(&self, status: i32) -> ! {
+        // check rx
+        error!("ABORT.");
+        if self.open {
+            if self.latency_set {
+                unsafe { ftdi_set_latency_timer(self.context, self.latency) };
+            }
+
+            unsafe { ftdi_usb_close(self.context) };
+        }
+        unsafe { ftdi_deinit(self.context) };
+        exit(status);
+    }
+}

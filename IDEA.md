@@ -41,3 +41,18 @@ Upsides:
     - Certain operations can see significant speed ups due to mass parallelization of algorithms.
         - Compression, Encryption?, etc
         - Maybe port a solver (like FEM?) to utilize hardware?
+
+
+arrange
+    -> arrange-ftdi
+        -> depends on libftdi
+        -> bin that works the same as iceprog...
+        -> library that allows for calling
+    -> arrange-spi
+        -> library with traits
+        -> allows for programming iCE40 from SPI on MCU
+        -> allows for programming iCE40 from SPI on Linux
+    -> arrange-macros
+        -> arrange::main macro
+            -> basically, just includes a bitstream
+                and calls the programmer before main.
