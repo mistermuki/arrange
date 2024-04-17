@@ -63,11 +63,16 @@ dependencies = [
 name = "arrange-ftdi"
 version = "0.1.0"
 dependencies = [
+ "arrange-traits",
  "clap",
  "env_logger",
  "libftdi1-sys",
  "log",
 ]
+
+[[package]]
+name = "arrange-traits"
+version = "0.1.0"
 
 [[package]]
 name = "cfg-if"

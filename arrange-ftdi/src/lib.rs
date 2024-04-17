@@ -1,3 +1,5 @@
+use arrange_traits::Arrange;
+
 pub mod cli;
 pub mod ftdi;
 
@@ -17,3 +19,30 @@ pub mod ftdi;
 //      - recv_byte (from FPGA)
 //      - BufReader interface?
 //      - BufWriter interface?
+
+#[macro_export]
+macro_rules! arrange {
+    () => {
+        ArrangeFTDI::new()
+    };
+}
+
+pub struct ArrangeFTDI {}
+
+impl Arrange for ArrangeFTDI {
+    fn new() -> Self {
+        Self {  }
+    }
+
+    fn init(&mut self) -> Result<(), ()> {
+        Err(())
+    }
+
+    fn check(&self) -> bool {
+        false
+    }
+
+    fn burn_bytes(&self, bytes: &[u8]) -> Result<(), ()> {
+        Err(())
+    }
+}
