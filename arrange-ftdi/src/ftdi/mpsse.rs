@@ -1,8 +1,6 @@
 use std::{
     ffi::{c_int, c_uchar},
     process::exit,
-    thread::sleep,
-    time::Duration,
 };
 
 use arrange_misc::error::ArrangeError;
@@ -89,15 +87,15 @@ impl MPSSE {
     const DEVICE_ID_2: c_int = 0x6014;
 
     ///  When set use TMS mode
-    const DATA_TMS: u8 = 0x40;
+    const _DATA_TMS: u8 = 0x40;
     ///  When set read data (Data IN)
     const DATA_IN: u8 = 0x20;
     ///  When set write data (Data OUT)
     const DATA_OUT: u8 = 0x10;
     ///  When set input/output data LSB first.
-    const DATA_LSB: u8 = 0x08;
+    const _DATA_LSB: u8 = 0x08;
     ///  When set receive data on negative clock edge
-    const DATA_ICN: u8 = 0x04;
+    const _DATA_ICN: u8 = 0x04;
     ///  When set count bits not bytes
     const DATA_BITS: u8 = 0x02;
     ///  When set update data on negative clock edge
@@ -203,47 +201,64 @@ impl MPSSE {
 
         // clock divide by 5.
         // maybe don't? could potentially be faster...
-        // TODO: i should generate an echo benchmark.
-        self.send_byte(MPSSECommand::TCKD5 as u8);
+        // self.send_byte(MPSSECommand::TCKD5 as u8)?;
+        //
+        // this instead uses the 60 MHz main clock.
+        self.send_byte(MPSSECommand::TCKX5 as u8)?;
 
         if slow_clock {
             info!("Setting FTDI USB to Slow Mode: 50 kHz");
-            self.send_byte(MPSSECommand::SETCLKDIV as u8);
-            self.send_byte(119);
-            self.send_byte(0);
+            self.send_byte(MPSSECommand::SETCLKDIV as u8)?;
+            self.send_byte(119)?;
+            self.send_byte(0)?;
         } else {
             info!("Setting FTDI USB to Normal Mode: 6 MHz");
-            self.send_byte(MPSSECommand::SETCLKDIV as u8);
-            self.send_byte(0);
-            self.send_byte(0);
+            self.send_byte(MPSSECommand::SETCLKDIV as u8)?;
+            self.send_byte(0)?;
+            self.send_byte(0)?;
         }
 
         Ok(())
     }
 
     /// Blocks while waiting to receive a byte.
-    pub fn recv_byte(&self) -> u8 {
+    pub fn recv_byte(&self) -> Result<u8, ArrangeError> {
         let mut data: u8 = 0;
         let data_ptr: *mut u8 = &mut data;
         loop {
             let read_count = unsafe { ftdi_read_data(self.context, data_ptr, 1) };
             if read_count < 0 {
                 error!("Read Error!");
-                self.error(2)
+                return Err(ArrangeError::ReadError);
             }
 
             if read_count == 1 {
                 break;
             }
-
-            sleep(Duration::from_millis(1));
+            //sleep(Duration::from_millis(1));
         }
 
-        data
+        Ok(data)
+    }
+
+    // Writes multiple bytes to the FTDI Device.
+    pub fn send_bytes(&self, data: &[u8]) -> Result<(), ArrangeError> {
+        let data_len: i32 = data.len() as i32;
+        let data_ptr: *const u8 = data.as_ptr();
+        let write_count = unsafe { ftdi_write_data(self.context, data_ptr, data_len) };
+        if write_count != data_len {
+            error!(
+                "Error writing bytes to FTDI. Expected {} bytes to be written, only got {}",
+                data_len, write_count
+            );
+            return Err(ArrangeError::WriteError);
+        }
+
+        Ok(())
     }
 
     /// Writes a byte to the FTDI Device.
-    pub fn send_byte(&self, data: u8) {
+    pub fn send_byte(&self, data: u8) -> Result<(), ArrangeError> {
         let data_ptr: *const u8 = &data;
         let write_count = unsafe { ftdi_write_data(self.context, data_ptr, 1) };
         if write_count != 1 {
@@ -251,18 +266,20 @@ impl MPSSE {
                 "Error writing byte to FTDI. Expected {} bytes to be written, only got {}",
                 1, write_count
             );
-            self.error(2);
+            return Err(ArrangeError::WriteError);
         }
+
+        Ok(())
     }
 
-    pub fn send_spi(&self, data: &[u8]) {
+    pub fn send_spi(&self, data: &[u8]) -> Result<(), ArrangeError> {
         if data.len() < 1 {
-            return;
+            return Ok(());
         }
 
-        self.send_byte(MPSSE::DATA_OUT | MPSSE::DATA_OCN);
-        self.send_byte((data.len() - 1) as u8);
-        self.send_byte(((data.len() - 1) >> 8) as u8);
+        self.send_byte(MPSSE::DATA_OUT | MPSSE::DATA_OCN)?;
+        self.send_byte((data.len() - 1) as u8)?;
+        self.send_byte(((data.len() - 1) >> 8) as u8)?;
 
         let data_ptr: *const u8 = data.as_ptr();
         let write_count = unsafe { ftdi_write_data(self.context, data_ptr, data.len() as c_int) };
@@ -272,18 +289,24 @@ impl MPSSE {
                 data.len(),
                 write_count
             );
-            self.error(2);
+
+            return Err(ArrangeError::ReadError);
         }
+
+        Ok(())
     }
 
-    pub fn transfer_spi(&self, data: &[u8]) -> Result<Vec<u8>, ()> {
+    pub fn transfer_spi(&self, data: &[u8]) -> Result<Vec<u8>, ArrangeError> {
         if data.len() < 1 {
-            return Ok(vec!());
+            return Ok(vec![]);
         }
 
-        self.send_byte(MPSSE::DATA_IN | MPSSE::DATA_OUT | MPSSE::DATA_OCN);
-        self.send_byte(data.len() as u8 - 1);
-        self.send_byte(((data.len() - 1) >> 8) as u8);
+        let intro: [u8; 3] = [
+            MPSSE::DATA_IN | MPSSE::DATA_OUT | MPSSE::DATA_OCN,
+            data.len() as u8 - 1,
+            ((data.len() - 1) >> 8) as u8,
+        ];
+        self.send_bytes(&intro)?;
 
         let data_ptr: *const u8 = data.as_ptr();
         let write_count = unsafe { ftdi_write_data(self.context, data_ptr, data.len() as c_int) };
@@ -293,38 +316,38 @@ impl MPSSE {
                 data.len(),
                 write_count
             );
-            return Err(());
+            return Err(ArrangeError::WriteError);
         }
-    
-        let mut return_vec = vec!();
+
+        let mut return_vec = vec![];
         while return_vec.len() < data.len() {
-            return_vec.push(self.recv_byte())
+            return_vec.push(self.recv_byte()?)
         }
 
         Ok(return_vec)
     }
 
-    pub fn transfer_spi_bits(&self, data: u8, n: u8) -> u8 {
-        self.send_byte(MPSSE::DATA_IN | MPSSE::DATA_OUT | MPSSE::DATA_OCN | MPSSE::DATA_BITS);
-        self.send_byte(n - 1);
-        self.send_byte(data);
+    pub fn transfer_spi_bits(&self, data: u8, n: u8) -> Result<u8, ArrangeError> {
+        self.send_byte(MPSSE::DATA_IN | MPSSE::DATA_OUT | MPSSE::DATA_OCN | MPSSE::DATA_BITS)?;
+        self.send_byte(n - 1)?;
+        self.send_byte(data)?;
 
         self.recv_byte()
     }
 
-    pub fn set_gpio(&self, gpio: u8, direction: u8) -> () {
-        self.send_byte(MPSSECommand::SETBLOW as u8);
-        self.send_byte(gpio);
-        self.send_byte(direction);
+    pub fn set_gpio(&self, gpio: u8, direction: u8) -> Result<(), ArrangeError> {
+        self.send_byte(MPSSECommand::SETBLOW as u8)?;
+        self.send_byte(gpio)?;
+        self.send_byte(direction)
     }
 
-    pub fn read_low_byte(&self) -> u8 {
-        self.send_byte(MPSSECommand::READBLOW as u8);
+    pub fn read_low_byte(&self) -> Result<u8, ArrangeError> {
+        self.send_byte(MPSSECommand::READBLOW as u8)?;
         self.recv_byte()
     }
 
-    pub fn read_high_byte(&self) -> u8 {
-        self.send_byte(MPSSECommand::READBHIGH as u8);
+    pub fn read_high_byte(&self) -> Result<u8, ArrangeError> {
+        self.send_byte(MPSSECommand::READBHIGH as u8)?;
         self.recv_byte()
     }
 

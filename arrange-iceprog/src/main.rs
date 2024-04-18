@@ -22,7 +22,7 @@ mod cli;
 
 macro_rules! read_cdone {
     ($mpsse: expr) => {{
-        if $mpsse.read_low_byte() & 0x40 != 0 {
+        if $mpsse.read_low_byte().unwrap() & 0x40 != 0 {
             info!("cdone: high");
         } else {
             info!("cdone: low");
@@ -30,7 +30,7 @@ macro_rules! read_cdone {
     }};
 }
 
-pub fn main() {
+pub fn main() -> Result<(), ArrangeError> {
     let args = Arguments::parse();
     if args.verbose {
         env_logger::builder()
@@ -74,32 +74,32 @@ pub fn main() {
     // Create Arrange.
     let mut arrange = arrange::Arrange::new();
     eprintln!("Initializing MPSSE...");
-    arrange.init().unwrap();
+    arrange.init()?;
     let mpsse = arrange.get_mpsse();
     eprintln!("MPSSE initialized.");
     read_cdone!(mpsse);
 
     let flash = Flash::new(&mpsse);
-    flash.release_reset();
+    flash.release_reset()?;
     sleep(Duration::from_millis(100));
     eprintln!("Reset...");
 
     if args.test_mode != TestMode::NoTest {
         // If in test mode...
-        flash.chip_deselect();
+        flash.chip_deselect()?;
         sleep(Duration::from_millis(250));
 
         read_cdone!(mpsse);
-        flash.reset();
-        flash.power_up();
+        flash.reset()?;
+        flash.power_up()?;
         if args.test_mode == TestMode::Quad {
             //flash.enable_quad();
             todo!("Implement QUAD SPI");
         } else {
-            flash.read_id();
+            flash.read_id().unwrap();
         }
-        flash.power_down();
-        flash.release_reset();
+        flash.power_down()?;
+        flash.release_reset()?;
         sleep(Duration::from_millis(250));
         read_cdone!(mpsse);
     } else if args.prog_sram {
@@ -112,15 +112,15 @@ pub fn main() {
         let file_size = f.metadata().unwrap().len() as usize;
         if !args.read_mode && !args.check_mode {
             if args.disable_protect {
-                flash.write_enable();
-                flash.disable_protection();
+                flash.write_enable()?;
+                flash.disable_protection()?;
             }
 
             if !args.dont_erase {
                 if args.bulk_erase {
-                    flash.write_enable();
-                    flash.bulk_erase();
-                    flash.wait();
+                    flash.write_enable()?;
+                    flash.bulk_erase()?;
+                    flash.wait()?;
                 } else {
                     // Erase enough for the file.
                     eprintln!("File Size: {file_size}");
@@ -131,11 +131,11 @@ pub fn main() {
                     let end_addr = (args.address_offset + file_size + block_mask) & !block_mask;
 
                     for addr in (begin_addr..end_addr).step_by(block_size) {
-                        flash.write_enable();
-                        flash.sector_erase(args.block_erase_size, addr);
+                        flash.write_enable()?;
+                        flash.sector_erase(args.block_erase_size, addr)?;
 
-                        debug!("Status after Block Erase: {}", flash.read_status());
-                        flash.wait();
+                        debug!("Status after Block Erase: {}", flash.read_status()?);
+                        flash.wait()?;
                     }
                 }
             }
@@ -164,9 +164,9 @@ pub fn main() {
                     );
 
                     // Write those chunks into the FLASH.
-                    flash.write_enable();
-                    flash.prog(args.address_offset + addr, &buffer[..read_count]);
-                    flash.wait();
+                    flash.write_enable()?;
+                    flash.prog(args.address_offset + addr, &buffer[..read_count])?;
+                    flash.wait()?;
 
                     addr += read_count;
                 }
@@ -177,14 +177,15 @@ pub fn main() {
         }
 
         if !args.disable_powerdown {
-            flash.power_down();
+            flash.power_down()?;
         }
 
-        flash.release_reset();
+        flash.release_reset()?;
         sleep(Duration::from_millis(250));
         read_cdone!(mpsse);
     }
 
     eprintln!("Bye.");
     mpsse.close();
+    Ok(())
 }

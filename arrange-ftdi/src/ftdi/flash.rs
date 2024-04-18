@@ -1,5 +1,4 @@
-use std::{thread::sleep, time::Duration};
-
+use arrange_misc::error::ArrangeError;
 use log::{debug, error, info};
 
 use super::{block_erase::BlockErase, mpsse::MPSSE};
@@ -88,7 +87,7 @@ impl<'a> Flash<'a> {
         Self { mpsse }
     }
 
-    fn set_cs_creset(&self, cs_b: u32, creset_b: u32) -> () {
+    fn set_cs_creset(&self, cs_b: u32, creset_b: u32) -> Result<(), ArrangeError> {
         let gpio: u8 = 0;
         let mut direction: u8 = 0x03;
 
@@ -100,22 +99,22 @@ impl<'a> Flash<'a> {
             direction |= 0x80;
         }
 
-        self.mpsse.set_gpio(gpio, direction);
+        self.mpsse.set_gpio(gpio, direction)
     }
 
-    pub fn release_reset(&self) -> () {
-        self.set_cs_creset(1, 1);
+    pub fn release_reset(&self) -> Result<(), ArrangeError> {
+        self.set_cs_creset(1, 1)
     }
 
-    pub fn chip_select(&self) -> () {
-        self.set_cs_creset(0, 0);
+    pub fn chip_select(&self) -> Result<(), ArrangeError> {
+        self.set_cs_creset(0, 0)
     }
 
-    pub fn chip_deselect(&self) -> () {
-        self.set_cs_creset(1, 0);
+    pub fn chip_deselect(&self) -> Result<(), ArrangeError> {
+        self.set_cs_creset(1, 0)
     }
 
-    pub fn read_id(&self) -> () {
+    pub fn read_id(&self) -> Result<String, ArrangeError> {
         /* JEDEC ID structure:
          * Byte No. | Data Type
          * ---------+----------
@@ -128,7 +127,7 @@ impl<'a> Flash<'a> {
 
         let data: [u8; 5] = [FlashCommand::JEDECID as u8; 5];
         debug!("Read Flash ID...");
-        self.chip_select();
+        self.chip_select()?;
 
         let jedec = self.mpsse.transfer_spi(&data[..5]).unwrap();
 
@@ -137,13 +136,15 @@ impl<'a> Flash<'a> {
                 error!(
                 "Extended Device String Length is 0xFF, this is likely a read error. Ignoring..."
             );
-                panic!()
+                return Err(ArrangeError::ReadError);
             } else if jedec[4] != 0 {
                 // We should read out the rest of the bytes...
                 debug!("Getting Extended Device String of length: {}", jedec[4]);
-                self.mpsse.transfer_spi(&vec![0; jedec[4] as usize]).unwrap()
+                self.mpsse
+                    .transfer_spi(&vec![0; jedec[4] as usize])
+                    .unwrap()
             } else {
-                panic!()
+                return Err(ArrangeError::DeviceError);
             }
         };
 
@@ -161,39 +162,40 @@ impl<'a> Flash<'a> {
         }
 
         info!("Flash ID: {flash_id}");
+        Ok(flash_id)
     }
 
-    pub fn reset(&self) -> () {
+    pub fn reset(&self) -> Result<(), ArrangeError> {
         let cmd: [u8; 8] = [0xff; 8];
 
-        self.chip_select();
-        self.mpsse.transfer_spi(&cmd).unwrap();
-        self.chip_deselect();
+        self.chip_select()?;
+        self.mpsse.transfer_spi(&cmd)?;
+        self.chip_deselect()?;
 
-        self.chip_select();
-        self.mpsse.transfer_spi_bits(0xff, 2);
-        self.chip_deselect();
+        self.chip_select()?;
+        self.mpsse.transfer_spi_bits(0xff, 2)?;
+        self.chip_deselect()
     }
 
-    pub fn power_up(&self) -> () {
+    pub fn power_up(&self) -> Result<(), ArrangeError> {
         let cmd: [u8; 1] = [FlashCommand::RPD as u8];
-        self.chip_select();
-        self.mpsse.transfer_spi(&cmd).unwrap();
-        self.chip_deselect();
+        self.chip_select()?;
+        self.mpsse.transfer_spi(&cmd)?;
+        self.chip_deselect()
     }
 
-    pub fn power_down(&self) -> () {
+    pub fn power_down(&self) -> Result<(), ArrangeError> {
         let cmd: [u8; 1] = [FlashCommand::PD as u8];
-        self.chip_select();
-        self.mpsse.transfer_spi(&cmd).unwrap();
-        self.chip_deselect();
+        self.chip_select()?;
+        self.mpsse.transfer_spi(&cmd)?;
+        self.chip_deselect()
     }
 
-    pub fn read_status(&self) -> u8 {
+    pub fn read_status(&self) -> Result<u8, ArrangeError> {
         let cmd: [u8; 2] = [FlashCommand::RSR1 as u8; 2];
-        self.chip_select();
-        let response = self.mpsse.transfer_spi(&cmd).unwrap();
-        self.chip_deselect();
+        self.chip_select()?;
+        let response = self.mpsse.transfer_spi(&cmd)?;
+        self.chip_deselect()?;
 
         debug!("SR1: {:#02X}", response[1]);
         debug!(
@@ -255,29 +257,29 @@ impl<'a> Flash<'a> {
             }
         );
 
-        response[1]
+        Ok(response[1])
     }
 
-    pub fn write_enable(&self) -> () {
-        debug!("Status before enable: {}", self.read_status());
+    pub fn write_enable(&self) -> Result<(), ArrangeError> {
+        debug!("Status before enable: {}", self.read_status()?);
         debug!("Enabling Write...");
 
         let cmd: [u8; 1] = [FlashCommand::WE as u8];
-        self.chip_select();
-        self.mpsse.transfer_spi(&cmd).unwrap();
-        self.chip_deselect();
+        self.chip_select()?;
+        self.mpsse.transfer_spi(&cmd)?;
+        self.chip_deselect()
     }
 
-    pub fn bulk_erase(&self) -> () {
+    pub fn bulk_erase(&self) -> Result<(), ArrangeError> {
         info!("Bulk Erase...");
 
         let cmd: [u8; 1] = [FlashCommand::CE as u8];
-        self.chip_select();
-        self.mpsse.transfer_spi(&cmd).unwrap();
-        self.chip_deselect();
+        self.chip_select()?;
+        self.mpsse.transfer_spi(&cmd)?;
+        self.chip_deselect()
     }
 
-    pub fn sector_erase(&self, be: BlockErase, addr: usize) -> () {
+    pub fn sector_erase(&self, be: BlockErase, addr: usize) -> Result<(), ArrangeError> {
         info!("Erase {be}kB sector at {:#06X}", addr);
 
         let command: [u8; 4] = match be {
@@ -301,12 +303,12 @@ impl<'a> Flash<'a> {
             ],
         };
 
-        self.chip_select();
-        self.mpsse.send_spi(&command);
-        self.chip_deselect();
+        self.chip_select()?;
+        self.mpsse.send_spi(&command)?;
+        self.chip_deselect()
     }
 
-    pub fn prog(&self, addr: usize, data: &[u8]) -> () {
+    pub fn prog(&self, addr: usize, data: &[u8]) -> Result<(), ArrangeError> {
         debug!("prog {:#06X} +{:#03X}", addr, data.len());
 
         let cmd: [u8; 4] = [
@@ -316,10 +318,10 @@ impl<'a> Flash<'a> {
             addr as u8,
         ];
 
-        self.chip_select();
-        self.mpsse.send_spi(&cmd);
-        self.mpsse.send_spi(data);
-        self.chip_deselect();
+        self.chip_select()?;
+        self.mpsse.send_spi(&cmd)?;
+        self.mpsse.send_spi(data)?;
+        self.chip_deselect()?;
 
         let mut debug_str = String::new();
 
@@ -335,18 +337,20 @@ impl<'a> Flash<'a> {
             ));
         }
         debug!("\n{}", debug_str.trim_end_matches('\n'));
+
+        Ok(())
     }
 
-    pub fn wait(&self) -> () {
+    pub fn wait(&self) -> Result<(), ArrangeError> {
         debug!("Waiting...");
 
         let mut count = 0;
 
         loop {
             let cmd: [u8; 2] = [FlashCommand::RSR1 as u8; 2];
-            self.chip_select();
-            let response = self.mpsse.transfer_spi(&cmd).unwrap();
-            self.chip_deselect();
+            self.chip_select()?;
+            let response = self.mpsse.transfer_spi(&cmd)?;
+            self.chip_deselect()?;
 
             if response[1] & 0x01 == 0 {
                 if count < 2 {
@@ -360,23 +364,25 @@ impl<'a> Flash<'a> {
                 count = 0;
             }
 
-            sleep(Duration::from_millis(1));
+            //sleep(Duration::from_millis(1));
         }
+
+        Ok(())
     }
 
-    pub fn disable_protection(&self) -> () {
+    pub fn disable_protection(&self) -> Result<(), ArrangeError> {
         info!("Disable Flash Protection...");
 
         let cmd: [u8; 2] = [FlashCommand::WSR1 as u8, 0];
-        self.chip_select();
+        self.chip_select()?;
         self.mpsse.transfer_spi(&cmd).unwrap();
-        self.chip_deselect();
-        self.wait();
+        self.chip_deselect()?;
+        self.wait()?;
 
         let cmd2: [u8; 2] = [FlashCommand::RSR1 as u8, 0];
-        self.chip_select();
+        self.chip_select()?;
         let response = self.mpsse.transfer_spi(&cmd2).unwrap();
-        self.chip_deselect();
+        self.chip_deselect()?;
 
         if response[1] != 0 {
             error!(
@@ -384,5 +390,7 @@ impl<'a> Flash<'a> {
                 response[1]
             );
         }
+
+        Ok(())
     }
 }
