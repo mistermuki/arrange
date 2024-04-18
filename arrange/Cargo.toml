@@ -1,0 +1,16 @@
+[package]
+name = "arrange"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+arrange-misc = { path="../arrange-misc" }
+heapless = { git="https://github.com/mistermuki/heapless.git", optional = true }
+arrange-ftdi = { path="../arrange-ftdi", optional = true }
+
+[features]
+default = ["dep:arrange-ftdi"]
+no_std = ["dep:heapless"]
+ftdi = ["dep:arrange-ftdi"]

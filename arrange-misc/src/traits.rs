@@ -1,5 +1,3 @@
-#![no_std]
-
 /// Generic trait for Arrange implementions.
 pub trait Arrange {
     /// Creates a new Arrange instance.

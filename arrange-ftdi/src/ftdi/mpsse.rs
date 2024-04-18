@@ -271,9 +271,9 @@ impl MPSSE {
         }
     }
 
-    pub fn transfer_spi(&self, data: &[u8]) -> Vec<u8> {
+    pub fn transfer_spi(&self, data: &[u8]) -> Result<Vec<u8>, ()> {
         if data.len() < 1 {
-            return vec!();
+            return Ok(vec!());
         }
 
         self.send_byte(MPSSE::DATA_IN | MPSSE::DATA_OUT | MPSSE::DATA_OCN);
@@ -288,7 +288,7 @@ impl MPSSE {
                 data.len(),
                 write_count
             );
-            self.error(2);
+            return Err(());
         }
     
         let mut return_vec = vec!();
@@ -296,7 +296,7 @@ impl MPSSE {
             return_vec.push(self.recv_byte())
         }
 
-        return_vec
+        Ok(return_vec)
     }
 
     pub fn transfer_spi_bits(&self, data: u8, n: u8) -> u8 {

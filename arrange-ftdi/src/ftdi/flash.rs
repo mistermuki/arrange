@@ -2,9 +2,7 @@ use std::{thread::sleep, time::Duration};
 
 use log::{debug, error, info};
 
-use crate::cli::block_erase::BlockErase;
-
-use super::mpsse::MPSSE;
+use super::{block_erase::BlockErase, mpsse::MPSSE};
 
 pub enum FlashCommand {
     ///  Write Enable
@@ -132,7 +130,7 @@ impl<'a> Flash<'a> {
         debug!("Read Flash ID...");
         self.chip_select();
 
-        let jedec = self.mpsse.transfer_spi(&data[..5]);
+        let jedec = self.mpsse.transfer_spi(&data[..5]).unwrap();
 
         let e_dev = {
             if jedec[4] == 0xff {
@@ -143,7 +141,7 @@ impl<'a> Flash<'a> {
             } else if jedec[4] != 0 {
                 // We should read out the rest of the bytes...
                 debug!("Getting Extended Device String of length: {}", jedec[4]);
-                self.mpsse.transfer_spi(&vec![0; jedec[4] as usize])
+                self.mpsse.transfer_spi(&vec![0; jedec[4] as usize]).unwrap()
             } else {
                 panic!()
             }
@@ -169,7 +167,7 @@ impl<'a> Flash<'a> {
         let cmd: [u8; 8] = [0xff; 8];
 
         self.chip_select();
-        self.mpsse.transfer_spi(&cmd);
+        self.mpsse.transfer_spi(&cmd).unwrap();
         self.chip_deselect();
 
         self.chip_select();
@@ -180,21 +178,21 @@ impl<'a> Flash<'a> {
     pub fn power_up(&self) -> () {
         let cmd: [u8; 1] = [FlashCommand::RPD as u8];
         self.chip_select();
-        self.mpsse.transfer_spi(&cmd);
+        self.mpsse.transfer_spi(&cmd).unwrap();
         self.chip_deselect();
     }
 
     pub fn power_down(&self) -> () {
         let cmd: [u8; 1] = [FlashCommand::PD as u8];
         self.chip_select();
-        self.mpsse.transfer_spi(&cmd);
+        self.mpsse.transfer_spi(&cmd).unwrap();
         self.chip_deselect();
     }
 
     pub fn read_status(&self) -> u8 {
         let cmd: [u8; 2] = [FlashCommand::RSR1 as u8; 2];
         self.chip_select();
-        let response = self.mpsse.transfer_spi(&cmd);
+        let response = self.mpsse.transfer_spi(&cmd).unwrap();
         self.chip_deselect();
 
         debug!("SR1: {:#02X}", response[1]);
@@ -266,7 +264,7 @@ impl<'a> Flash<'a> {
 
         let cmd: [u8; 1] = [FlashCommand::WE as u8];
         self.chip_select();
-        self.mpsse.transfer_spi(&cmd);
+        self.mpsse.transfer_spi(&cmd).unwrap();
         self.chip_deselect();
     }
 
@@ -275,7 +273,7 @@ impl<'a> Flash<'a> {
 
         let cmd: [u8; 1] = [FlashCommand::CE as u8];
         self.chip_select();
-        self.mpsse.transfer_spi(&cmd);
+        self.mpsse.transfer_spi(&cmd).unwrap();
         self.chip_deselect();
     }
 
@@ -347,7 +345,7 @@ impl<'a> Flash<'a> {
         loop {
             let cmd: [u8; 2] = [FlashCommand::RSR1 as u8; 2];
             self.chip_select();
-            let response = self.mpsse.transfer_spi(&cmd);
+            let response = self.mpsse.transfer_spi(&cmd).unwrap();
             self.chip_deselect();
 
             if response[1] & 0x01 == 0 {
@@ -371,13 +369,13 @@ impl<'a> Flash<'a> {
 
         let cmd: [u8; 2] = [FlashCommand::WSR1 as u8, 0];
         self.chip_select();
-        self.mpsse.transfer_spi(&cmd);
+        self.mpsse.transfer_spi(&cmd).unwrap();
         self.chip_deselect();
         self.wait();
 
         let cmd2: [u8; 2] = [FlashCommand::RSR1 as u8, 0];
         self.chip_select();
-        let response = self.mpsse.transfer_spi(&cmd2);
+        let response = self.mpsse.transfer_spi(&cmd2).unwrap();
         self.chip_deselect();
 
         if response[1] != 0 {

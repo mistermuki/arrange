@@ -3,5 +3,5 @@
 version = 3
 
 [[package]]
-name = "arrange-traits"
+name = "arrange-misc"
 version = "0.1.0"

@@ -1,4 +1,5 @@
-use super::{block_erase::{block_erase_parser, BlockErase}, ftdi_interface::ftdi_interface_parser, test_mode::{test_mode_parser, TestMode}};
+use super::parsers::{test_mode_parser, block_erase_parser, ftdi_interface_parser};
+use arrange::FTDI::{block_erase::BlockErase, test_mode::TestMode};
 use clap::Parser;
 use libftdi1_sys::ftdi_interface;
 

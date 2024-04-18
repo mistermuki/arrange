@@ -1,8 +1,6 @@
 /*
  * Allows you to program an iCE40 FPGA through a FTDI 2322.
  * (sorta) a drop in replacement for iceprog.
- *
- * should eventally use lib.rs bindings for functionality instead of doing it raw.
  */
 use std::{
     fs::File,
@@ -12,13 +10,11 @@ use std::{
     time::Duration,
 };
 
-use crate::cli::{arguments::Arguments, test_mode::TestMode};
-use arrange_ftdi::{
-    cli::block_erase::BlockErase,
-    ftdi::{flash::Flash, mpsse::MPSSE},
-};
+use arrange::FTDI::{flash::Flash, mpsse::MPSSE, test_mode::TestMode};
 use clap::{CommandFactory, Parser};
 use log::{debug, error, info};
+
+use crate::cli::arguments::Arguments;
 mod cli;
 
 macro_rules! read_cdone {
@@ -137,14 +133,7 @@ pub fn main() {
 
                     for addr in (begin_addr..end_addr).step_by(block_size) {
                         flash.write_enable();
-                        flash.sector_erase(
-                            match args.block_erase_size {
-                                cli::block_erase::BlockErase::FourK => BlockErase::FourK,
-                                cli::block_erase::BlockErase::ThirtyTwoK => BlockErase::ThirtyTwoK,
-                                cli::block_erase::BlockErase::SixtyFourK => BlockErase::SixtyFourK,
-                            },
-                            addr,
-                        );
+                        flash.sector_erase(args.block_erase_size, addr);
 
                         debug!("Status after Block Erase: {}", flash.read_status());
                         flash.wait();

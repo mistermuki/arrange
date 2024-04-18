@@ -1,41 +1,23 @@
-use arrange_traits::Arrange;
+use arrange_misc::traits::Arrange;
+use ftdi::mpsse::MPSSE;
+use libftdi1_sys::ftdi_interface;
 
-pub mod cli;
 pub mod ftdi;
 
-// TODD:
-//
-// add generic bindings that are shared with potentially other arrange-* crates.
-// this should probably be done in an arrange-traits crate that everything else uses.
-//
-// there should basically be a method for:
-//      - reset
-//      - program (from bytes)
-//      - program (from file)
-//      - send_raw_cmd?
-//
-// eventually:
-//      - send_byte (to FPGA)
-//      - recv_byte (from FPGA)
-//      - BufReader interface?
-//      - BufWriter interface?
-
-#[macro_export]
-macro_rules! arrange {
-    () => {
-        ArrangeFTDI::new()
-    };
+pub struct ArrangeFTDI {
+    mpsse: MPSSE,
 }
-
-pub struct ArrangeFTDI {}
 
 impl Arrange for ArrangeFTDI {
     fn new() -> Self {
-        Self {  }
+        Self {
+            mpsse: MPSSE::new(),
+        }
     }
 
     fn init(&mut self) -> Result<(), ()> {
-        Err(())
+        self.mpsse.init(ftdi_interface::INTERFACE_A, None, false);
+        Ok(())
     }
 
     fn check(&self) -> bool {
