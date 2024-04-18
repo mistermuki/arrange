@@ -126,19 +126,19 @@ impl MPSSE {
                 let status_1 =
                     unsafe { ftdi_usb_open(self.context, MPSSE::FTDI_VENDOR, MPSSE::DEVICE_ID_1) };
                 debug!(
-                    "Status of ftdi_usb_open on Device ID: {:#x} is: {status_1}",
+                    "Status of ftdi_usb_open on Device ID: {:#X} is: {status_1}",
                     MPSSE::DEVICE_ID_1
                 );
                 let status_2 =
                     unsafe { ftdi_usb_open(self.context, MPSSE::FTDI_VENDOR, MPSSE::DEVICE_ID_2) };
                 debug!(
-                    "Status of ftdi_usb_open on Device ID: {:#x} is: {status_2}",
+                    "Status of ftdi_usb_open on Device ID: {:#X} is: {status_2}",
                     MPSSE::DEVICE_ID_2
                 );
 
                 if status_1 != 0 && status_2 != 0 {
-                    error!(
-                        "can't find iCE FTDI USB Device (vendor_id {:#x} with device ids {:#x} or {:#x})",
+                    debug!(
+                        "Can't find iCE FTDI USB Device (Vendor ID: {:#X} with Device IDs {:#X} or {:#x})",
                         MPSSE::FTDI_VENDOR,
                         MPSSE::DEVICE_ID_1,
                         MPSSE::DEVICE_ID_2,
@@ -155,7 +155,7 @@ impl MPSSE {
         let reset_status = unsafe { ftdi_usb_reset(self.context) };
         debug!("FTDI USB Reset Status: {reset_status}");
         if reset_status != 0 {
-            error!("Failed to reset iCE FTDI USB device.\n");
+            debug!("Failed to reset iCE FTDI USB device.\n");
             return Err(ArrangeError::DeviceError);
         }
 
@@ -163,7 +163,7 @@ impl MPSSE {
         let purge_status = unsafe { ftdi_usb_purge_buffers(self.context) };
         debug!("FTDI USB Buffer Purge Status: {reset_status}");
         if purge_status != 0 {
-            error!("Failed to purge buffers on iCE FTDI USB device.\n");
+            debug!("Failed to purge buffers on iCE FTDI USB device.\n");
             return Err(ArrangeError::DeviceError);
         }
 
@@ -173,7 +173,7 @@ impl MPSSE {
         debug!("FTDI USB Get Latency Status: {get_latency_status}");
         debug!("FTDI USB Latency Value: {:#x}", self.latency);
         if get_latency_status != 0 {
-            error!("Failed to get latency timer: {:?}.", unsafe {
+            debug!("Failed to get latency timer: {:?}.", unsafe {
                 ftdi_get_error_string(self.context)
             });
 
@@ -184,7 +184,7 @@ impl MPSSE {
         let set_latency_status = unsafe { ftdi_set_latency_timer(self.context, 1) };
         debug!("FTDI USB Set Latency Status: {set_latency_status}");
         if set_latency_status != 0 {
-            error!("Failed to get latency timer: {:?}.", unsafe {
+            debug!("Failed to get latency timer: {:?}.", unsafe {
                 ftdi_get_error_string(self.context)
             });
             return Err(ArrangeError::DeviceError);
@@ -195,7 +195,7 @@ impl MPSSE {
             unsafe { ftdi_set_bitmode(self.context, 0xff, ftdi_mpsse_mode::BITMODE_MPSSE.0 as u8) };
         debug!("FTDI USB Set MPSSE Mode Status: {set_mpsse_mode_status}");
         if set_mpsse_mode_status != 0 {
-            error!("Failed to set MPSSE mode on iCE FTDI USB device.\n");
+            debug!("Failed to set MPSSE mode on iCE FTDI USB device.\n");
             return Err(ArrangeError::DeviceError);
         }
 
@@ -208,11 +208,12 @@ impl MPSSE {
 
         if slow_clock {
             info!("Setting FTDI USB to Slow Mode: 50 kHz");
+            self.send_byte(MPSSECommand::TCKD5 as u8)?;
             self.send_byte(MPSSECommand::SETCLKDIV as u8)?;
             self.send_byte(119)?;
             self.send_byte(0)?;
         } else {
-            info!("Setting FTDI USB to Normal Mode: 6 MHz");
+            info!("Setting FTDI USB to Normal Mode");
             self.send_byte(MPSSECommand::SETCLKDIV as u8)?;
             self.send_byte(0)?;
             self.send_byte(0)?;
@@ -228,7 +229,7 @@ impl MPSSE {
         loop {
             let read_count = unsafe { ftdi_read_data(self.context, data_ptr, 1) };
             if read_count < 0 {
-                error!("Read Error!");
+                debug!("Read Error!");
                 return Err(ArrangeError::ReadError);
             }
 
@@ -247,7 +248,7 @@ impl MPSSE {
         let data_ptr: *const u8 = data.as_ptr();
         let write_count = unsafe { ftdi_write_data(self.context, data_ptr, data_len) };
         if write_count != data_len {
-            error!(
+            debug!(
                 "Error writing bytes to FTDI. Expected {} bytes to be written, only got {}",
                 data_len, write_count
             );
@@ -262,7 +263,7 @@ impl MPSSE {
         let data_ptr: *const u8 = &data;
         let write_count = unsafe { ftdi_write_data(self.context, data_ptr, 1) };
         if write_count != 1 {
-            error!(
+            debug!(
                 "Error writing byte to FTDI. Expected {} bytes to be written, only got {}",
                 1, write_count
             );
@@ -284,7 +285,7 @@ impl MPSSE {
         let data_ptr: *const u8 = data.as_ptr();
         let write_count = unsafe { ftdi_write_data(self.context, data_ptr, data.len() as c_int) };
         if write_count != data.len() as i32 {
-            error!(
+            debug!(
                 "Error writing data. Expected {} bytes to be written, only got {}",
                 data.len(),
                 write_count
@@ -303,7 +304,7 @@ impl MPSSE {
 
         let intro: [u8; 3] = [
             MPSSE::DATA_IN | MPSSE::DATA_OUT | MPSSE::DATA_OCN,
-            data.len() as u8 - 1,
+            (data.len() - 1) as u8,
             ((data.len() - 1) >> 8) as u8,
         ];
         self.send_bytes(&intro)?;
@@ -311,7 +312,7 @@ impl MPSSE {
         let data_ptr: *const u8 = data.as_ptr();
         let write_count = unsafe { ftdi_write_data(self.context, data_ptr, data.len() as c_int) };
         if write_count != data.len() as i32 {
-            error!(
+            debug!(
                 "Error writing data to FTDI. Expected {} bytes to be written, only got {}",
                 data.len(),
                 write_count
@@ -362,7 +363,7 @@ impl MPSSE {
     /// On error, we need to close down the FTDI context and exit from the program.
     pub fn error(&self, status: i32) -> ! {
         // check rx
-        error!("ABORT.");
+        debug!("ABORT.");
         if self.open {
             if self.latency_set {
                 unsafe { ftdi_set_latency_timer(self.context, self.latency) };

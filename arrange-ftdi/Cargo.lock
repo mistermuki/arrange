@@ -71,10 +71,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "arrange-iceprog"
-version = "0.1.0"
-
-[[package]]
 name = "arrange-misc"
 version = "0.1.0"
 

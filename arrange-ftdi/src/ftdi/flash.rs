@@ -324,7 +324,6 @@ impl<'a> Flash<'a> {
         self.chip_deselect()?;
 
         let mut debug_str = String::new();
-
         for i in 0..data.len() {
             debug_str.push_str(&format!(
                 "{:#02x}{}",
@@ -339,6 +338,38 @@ impl<'a> Flash<'a> {
         debug!("\n{}", debug_str.trim_end_matches('\n'));
 
         Ok(())
+    }
+
+    pub fn read(&self, addr: usize, n: usize) -> Result<Vec<u8>, ArrangeError> {
+        debug!("read {:#06X} +{:#03X}", addr, n);
+
+        let cmd: [u8; 4] = [
+            FlashCommand::RD as u8,
+            (addr >> 16) as u8,
+            (addr >> 8) as u8,
+            addr as u8,
+        ];
+
+        self.chip_select()?;
+        self.mpsse.send_spi(&cmd)?;
+        let response = self.mpsse.transfer_spi(&vec![0; n])?;
+        self.chip_deselect()?;
+
+        let mut debug_str = String::new();
+        for i in 0..response.len() {
+            debug_str.push_str(&format!(
+                "{:#02x}{}",
+                response[i],
+                if i == response.len() - 1 || i % 32 == 31 {
+                    '\n'
+                } else {
+                    ' '
+                }
+            ));
+        }
+        debug!("\n{}", debug_str.trim_end_matches('\n'));
+
+        Ok(response)
     }
 
     pub fn wait(&self) -> Result<(), ArrangeError> {
