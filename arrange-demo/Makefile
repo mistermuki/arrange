@@ -1,17 +1,23 @@
 HW_DIR = ./src/hw
 
-build:
-	cd $(HW_DIR) && make bitstream
+.PHONY = build bitstream release run run-log clean
+
+bitstream:
+	# Ensures we always have the freshest bitstream.
+	cd $(HW_DIR) && $(MAKE) bitstream
+
+build: bitstream 
 	cargo build 
 
-release:
-	cd $(HW_DIR) && make bitstream
+release: bitstream
 	cargo build --release
 
-run: 
-	cd $(HW_DIR) && make bitstream
+run: bitstream
 	cargo run
 
+run-log: bitstream
+	RUST_LOG=debug cargo run
+
 clean:
-	$(MAKE) -C $(HW_DIR) clean
+	cd $(HW_DIR) && make clean
 	cargo clean

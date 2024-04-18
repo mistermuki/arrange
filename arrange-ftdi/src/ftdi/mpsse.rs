@@ -10,7 +10,7 @@ use libftdi1_sys::{
     ftdi_set_interface, ftdi_set_latency_timer, ftdi_usb_close, ftdi_usb_open,
     ftdi_usb_purge_buffers, ftdi_usb_reset, ftdi_write_data,
 };
-use log::{debug, error, info};
+use log::{debug, info};
 
 /// Mode commands
 #[derive(Copy, Clone)]

@@ -7,8 +7,7 @@ FOOTPRINT = tq144
 # Files
 FILES = top.v clock_divider.v
 
-.PHONY: all clean burn timing
-
+.PHONY: all bitstream clean burn timing
 
 all:  $(BUILD)/$(PROJ).blif $(BUILD)/$(PROJ).bin
 

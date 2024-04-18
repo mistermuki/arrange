@@ -23,14 +23,14 @@ module top (
   );
 
   /* LED drivers */
-  reg led1_value = 0;
-  reg led2_value = 0;
-  reg led3_value = 0;
-  reg led4_value = 0;
-  assign led1 = led1_value;
-  assign led2 = led2_value;
-  assign led3 = led3_value;
-  assign led4 = led4_value;
+  reg [3:0] led1_value = 0;
+  reg [3:0] led2_value = 0;
+  reg [3:0] led3_value = 0;
+  reg [3:0] led4_value = 0;
+  assign led1 = led1_value[3];
+  assign led2 = led2_value[2];
+  assign led3 = led3_value[2];
+  assign led4 = led4_value[2];
 
   /* always */
   always @(posedge clk[20]) begin
