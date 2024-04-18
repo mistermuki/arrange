@@ -10,7 +10,10 @@ use std::{
     time::Duration,
 };
 
-use arrange::FTDI::{flash::Flash, mpsse::MPSSE, test_mode::TestMode};
+use arrange::{
+    prelude::*,
+    FTDI::{flash::Flash, test_mode::TestMode},
+};
 use clap::{CommandFactory, Parser};
 use log::{debug, error, info};
 
@@ -68,15 +71,11 @@ pub fn main() {
         }
     };
 
-    // Create MPSSE object
-    let mut mpsse = MPSSE::new();
-
+    // Create Arrange.
+    let mut arrange = arrange::Arrange::new();
     eprintln!("Initializing MPSSE...");
-    mpsse.init(
-        args.ftdi_chip_interface_select,
-        args.device_string,
-        args.slow_clock,
-    );
+    arrange.init().unwrap();
+    let mpsse = arrange.get_mpsse();
     eprintln!("MPSSE initialized.");
     read_cdone!(mpsse);
 

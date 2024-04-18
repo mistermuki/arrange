@@ -5,6 +5,7 @@ use std::{
     time::Duration,
 };
 
+use arrange_misc::error::ArrangeError;
 use libftdi1_sys::{
     ftdi_context, ftdi_deinit, ftdi_disable_bitbang, ftdi_get_error_string, ftdi_get_latency_timer,
     ftdi_init, ftdi_interface, ftdi_mpsse_mode, ftdi_new, ftdi_read_data, ftdi_set_bitmode,
@@ -116,7 +117,7 @@ impl MPSSE {
         interface: ftdi_interface,
         device_string: Option<String>,
         slow_clock: bool,
-    ) {
+    ) -> Result<(), ArrangeError> {
         unsafe { ftdi_init(self.context) };
         unsafe { ftdi_set_interface(self.context, interface) };
 
@@ -144,7 +145,8 @@ impl MPSSE {
                         MPSSE::DEVICE_ID_1,
                         MPSSE::DEVICE_ID_2,
                     );
-                    self.error(2);
+
+                    return Err(ArrangeError::DeviceError);
                 }
             }
         }
@@ -156,7 +158,7 @@ impl MPSSE {
         debug!("FTDI USB Reset Status: {reset_status}");
         if reset_status != 0 {
             error!("Failed to reset iCE FTDI USB device.\n");
-            self.error(2);
+            return Err(ArrangeError::DeviceError);
         }
 
         // Purge USB Buffers.
@@ -164,7 +166,7 @@ impl MPSSE {
         debug!("FTDI USB Buffer Purge Status: {reset_status}");
         if purge_status != 0 {
             error!("Failed to purge buffers on iCE FTDI USB device.\n");
-            self.error(2);
+            return Err(ArrangeError::DeviceError);
         }
 
         // Gets the latency.
@@ -176,7 +178,8 @@ impl MPSSE {
             error!("Failed to get latency timer: {:?}.", unsafe {
                 ftdi_get_error_string(self.context)
             });
-            self.error(2);
+
+            return Err(ArrangeError::DeviceError);
         }
 
         // Sets the latency to 1 kHz polling.
@@ -186,7 +189,7 @@ impl MPSSE {
             error!("Failed to get latency timer: {:?}.", unsafe {
                 ftdi_get_error_string(self.context)
             });
-            self.error(2);
+            return Err(ArrangeError::DeviceError);
         }
         self.latency_set = true;
 
@@ -195,7 +198,7 @@ impl MPSSE {
         debug!("FTDI USB Set MPSSE Mode Status: {set_mpsse_mode_status}");
         if set_mpsse_mode_status != 0 {
             error!("Failed to set MPSSE mode on iCE FTDI USB device.\n");
-            self.error(2)
+            return Err(ArrangeError::DeviceError);
         }
 
         // clock divide by 5.
@@ -214,6 +217,8 @@ impl MPSSE {
             self.send_byte(0);
             self.send_byte(0);
         }
+
+        Ok(())
     }
 
     /// Blocks while waiting to receive a byte.

@@ -8,8 +8,8 @@ edition = "2021"
 [dependencies]
 arrange = { path="../arrange", features = ["ftdi"] }
 clap = { version = "4.5.4", features = ["derive"] }
+libftdi1-sys = "1.1.3"
 
 # Needed for arrange logging.
 env_logger = "0.11.3"
-libftdi1-sys = "1.1.3"
 log = "0.4.21"
