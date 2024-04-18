@@ -1,11 +1,15 @@
 HW_DIR = ./src/hw
 
-all:
-	$(MAKE) -C $(HW_DIR)
+build:
+	cd $(HW_DIR) && make bitstream
 	cargo build 
 
+release:
+	cd $(HW_DIR) && make bitstream
+	cargo build --release
+
 run: 
-	$(MAKE) -C $(HW_DIR) all
+	cd $(HW_DIR) && make bitstream
 	cargo run
 
 clean:

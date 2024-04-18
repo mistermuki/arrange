@@ -2,27 +2,33 @@ use std::time::Instant;
 
 use arrange::prelude::*;
 use log::info;
-use text_io::read;
 
 fn main() {
-    let bitstream = include_bytes!("hw/build/bitstream.bin");
     env_logger::init();
+    let bitstream = include_bytes!("hw/build/bitstream.bin");
     info!("Bitstream Byte Count: {}", bitstream.len());
-
-    print!("Should we burn our bitstream onto the FPGA? [Y/N]: ");
 
     // Create and initalize Arrange.
     let mut arrange = arrange::Arrange::new();
-    arrange.init().unwrap();
+    match arrange.init() {
+        Ok(_) => {
+            // If we have a valid Arrange device.
+            let now = Instant::now();
+            arrange.burn(bitstream).unwrap();
+            let elapsed = now.elapsed();
 
-    let answer: String = read!("{}\n");
+            // ~126 ms if you have the same bitstream.
+            // ~1.34 seconds if you have a different one.
+            //
+            // could be sped up by doing incremental flashing?
+            // so only rewrite when you find a difference.
+            println!("Burning Time: {:?}", elapsed);
+        }
 
-    if answer.to_lowercase().starts_with('y') {
-        let now = Instant::now();
-        arrange.burn_bytes(bitstream).unwrap();
-        let elapsed = now.elapsed();
-
-        println!("Burning Time: {:?}", elapsed);
+        Err(_) => {
+            // If we don't have a valid Arrange device.
+            println!("No Arrange Device detected.");
+        }
     }
 
     println!("Hello from Arrange!");

@@ -1,0 +1,12 @@
+[env]
+PROJ = "bitstream"
+BUILD = "./build"
+DEVICE = "1k"
+FOOTPRINT = "tq144"
+FILES = "top.v"
+
+[tasks.yosys]
+script_runner = "@shell"
+script = '''
+    yosys -p "synth_ice40 -top top -blif ${BUILD}/${PROJ}.blif -json ${BUILD}/${PROJ}.json" ${FILES}
+'''

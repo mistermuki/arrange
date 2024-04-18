@@ -9,16 +9,32 @@ FILES = top.v clock_divider.v
 
 .PHONY: all clean burn timing
 
-all $(BUILD)/$(PROJ).asc $(BUILD)/$(PROJ).bin:
-	# if build folder doesn't exist, create it
+
+all:  $(BUILD)/$(PROJ).blif $(BUILD)/$(PROJ).bin
+
+bitstream: $(BUILD)/$(PROJ).bin
+
+$(BUILD):
 	mkdir -p $(BUILD)
+
+$(BUILD)/$(PROJ).blif: $(BUILD) $(FILES)
 	# synthesize using Yosys
-	yosys -p "synth_ice40 -top top -blif $(BUILD)/$(PROJ).blif -json $(BUILD)/$(PROJ).json" $(FILES)
+	echo "Running Yosys for BLIF"
+	yosys -p "synth_ice40 -top top -blif $(BUILD)/$(PROJ).blif" $(FILES)
+
+$(BUILD)/$(PROJ).json: $(BUILD) $(FILES)
+	# synthesize using Yosys
+	echo "Running Yosys for JSON"
+	yosys -p "synth_ice40 -top top -json $(BUILD)/$(PROJ).json" $(FILES)
+
+$(BUILD)/$(PROJ).asc: $(BUILD) $(FILES) $(BUILD)/$(PROJ).json
 	# Place and route using arachne
 	#arachne-pnr -d $(DEVICE) -P $(FOOTPRINT) -o $(BUILD)/$(PROJ).asc -p pinmap.pcf $(BUILD)/$(PROJ).blif
-	nextpnr-ice40 --hx$(DEVICE) --json build/$(PROJ).json --pcf pinmap.pcf --asc build/$(PROJ).asc
-	# Convert to bitstream using IcePack
+	nextpnr-ice40 --hx$(DEVICE) --json $(BUILD)/$(PROJ).json --pcf pinmap.pcf --asc $(BUILD)/$(PROJ).asc
+
+$(BUILD)/$(PROJ).bin: $(BUILD)/$(PROJ).asc
 	icepack $(BUILD)/$(PROJ).asc $(BUILD)/$(PROJ).bin
+
 
 burn: $(BUILD)/$(PROJ).bin
 	# iceprog $(BUILD)/$(PROJ).bin
