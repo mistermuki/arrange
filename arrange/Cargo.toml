@@ -7,10 +7,8 @@ edition = "2021"
 
 [dependencies]
 arrange-misc = { path="../arrange-misc" }
-heapless = { git="https://github.com/mistermuki/heapless.git", optional = true }
 arrange-ftdi = { path="../arrange-ftdi", optional = true }
 
 [features]
 default = ["dep:arrange-ftdi"]
-no_std = ["dep:heapless"]
 ftdi = ["dep:arrange-ftdi"]

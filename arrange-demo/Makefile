@@ -2,8 +2,8 @@ HW_DIR = ./src/hw
 
 .PHONY = build bitstream release run run-log clean
 
+# Ensures we always have the freshest bitstream.
 bitstream:
-	# Ensures we always have the freshest bitstream.
 	cd $(HW_DIR) && $(MAKE) bitstream
 
 build: bitstream 

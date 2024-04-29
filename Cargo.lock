@@ -65,7 +65,15 @@ version = "0.1.0"
 dependencies = [
  "arrange-ftdi",
  "arrange-misc",
- "heapless",
+]
+
+[[package]]
+name = "arrange-demo"
+version = "0.1.0"
+dependencies = [
+ "arrange",
+ "env_logger",
+ "log",
 ]
 
 [[package]]
@@ -80,14 +88,17 @@ dependencies = [
 ]
 
 [[package]]
-name = "arrange-misc"
+name = "arrange-iceprog"
 version = "0.1.0"
+dependencies = [
+ "arrange",
+ "env_logger",
+ "log",
+]
 
 [[package]]
-name = "byteorder"
-version = "1.5.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1fd0f2584146f6f2ef48085050886acf353beff7305ebd1ae69500e27c67f64b"
+name = "arrange-misc"
+version = "0.1.0"
 
 [[package]]
 name = "cfg-if"
@@ -165,24 +176,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "hash32"
-version = "0.3.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "47d60b12902ba28e2730cd37e95b8c9223af2808df9e902d4df49588d1470606"
-dependencies = [
- "byteorder",
-]
-
-[[package]]
-name = "heapless"
-version = "0.8.0"
-source = "git+https://github.com/mistermuki/heapless.git#9a8bdd891b68e23dfc6b3f08494159482d2ed97d"
-dependencies = [
- "hash32",
- "stable_deref_trait",
-]
-
-[[package]]
 name = "heck"
 version = "0.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -196,9 +189,9 @@ checksum = "9a3a5bfb195931eeb336b2a7b4d761daec841b97f947d34394601737a7bba5e4"
 
 [[package]]
 name = "libc"
-version = "0.2.153"
+version = "0.2.154"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9c198f91728a82281a64e1f4f9eeb25d82cb32a5de251c6bd1b5154d63a8e7bd"
+checksum = "ae743338b92ff9146ce83992f766a31066a91a8c84a45e0e9f21e7cf6de6d346"
 
 [[package]]
 name = "libftdi1-sys"
@@ -276,12 +269,6 @@ name = "regex-syntax"
 version = "0.8.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "adad44e29e4c806119491a7f06f03de4d1af22c3a680dd47f1e6e179439d1f56"
-
-[[package]]
-name = "stable_deref_trait"
-version = "1.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a8f112729512f8e442d81f95a8a7ddf2b7c6b8a1a6f509a95864142b30cab2d3"
 
 [[package]]
 name = "strsim"
