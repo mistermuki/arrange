@@ -92,6 +92,7 @@ name = "arrange-iceprog"
 version = "0.1.0"
 dependencies = [
  "arrange",
+ "clap",
  "env_logger",
  "log",
 ]
