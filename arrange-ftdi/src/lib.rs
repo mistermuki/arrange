@@ -7,33 +7,50 @@ use crate::ftdi::block_erase::BlockErase;
 
 pub mod ftdi;
 
-pub struct ArrangeFTDI {
-    mpsse: MPSSE,
+pub struct ArrangeFTDI<'a> {
+    flash_interface: MPSSE<'a>,
+    comm_interface: MPSSE<'a>,
 }
 
-impl ArrangeFTDI {
-    pub fn get_mpsse(&self) -> &MPSSE {
-        &self.mpsse
+impl<'a> ArrangeFTDI<'a> {
+    pub fn get_mpsse(&self, programming: bool) -> &MPSSE {
+        if programming {
+            &self.flash_interface
+        } else {
+            &self.comm_interface
+        }
     }
 
-    pub fn get_flash(&self) -> Flash {
-        Flash::new(&self.mpsse)
+    pub fn get_mpsse_mut(&mut self, programming: bool) -> &'a mut MPSSE {
+        if programming {
+            &mut self.flash_interface
+        } else {
+            &mut self.comm_interface
+        }
+    }
+
+    pub fn get_flash(&'a mut self, programming: bool) -> Flash {
+        Flash::new(if programming { &mut self.flash_interface } else { &mut self.comm_interface })
     }
 }
 
-impl Arrange for ArrangeFTDI {
+impl<'a> Arrange for ArrangeFTDI<'a> {
     fn new() -> Self {
         Self {
-            mpsse: MPSSE::new(),
+            flash_interface: MPSSE::new(),
+            comm_interface: MPSSE::new(),
         }
     }
 
     fn init(&mut self) -> Result<(), ArrangeError> {
-        self.mpsse.init(ftdi_interface::INTERFACE_A, None, false)
+        // We can only program over Interface A.
+        // We can only communicate over Interface B.
+        self.flash_interface.init(ftdi_interface::INTERFACE_A, None, false)?;
+        self.comm_interface.init(ftdi_interface::INTERFACE_B, None, false)
     }
 
-    fn burn(&self, bytes: &[u8]) -> Result<(), ArrangeError> {
-        let flash = Flash::new(&self.mpsse);
+    fn burn(&mut self, bytes: &[u8]) -> Result<(), ArrangeError> {
+        let mut flash = Flash::new(&mut self.flash_interface);
 
         // Reset.
         flash.release_reset()?;
@@ -116,5 +133,15 @@ impl Arrange for ArrangeFTDI {
 
     fn read(&self) -> Result<Vec<u8>, ArrangeError> {
         todo!("Implement at some point");
+    }
+
+    fn send(&mut self, bytes: &[u8]) -> Result<(), ArrangeError> {
+        // We are programming on interface A.
+        // When we are sending and recieving, we want to do it over interface B.
+        Ok(())
+    }
+
+    fn recv(&mut self, length: usize) -> Result<Vec<u8>, ArrangeError> {
+        todo!()
     }
 }

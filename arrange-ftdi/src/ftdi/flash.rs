@@ -78,16 +78,16 @@ pub enum FlashCommand {
     RESET = 0x99,
 }
 
-pub struct Flash<'a> {
-    mpsse: &'a MPSSE,
+pub struct Flash<'a, 'b> {
+    mpsse: &'b mut MPSSE<'a>,
 }
 
-impl<'a> Flash<'a> {
-    pub fn new(mpsse: &'a MPSSE) -> Self {
+impl<'a, 'b> Flash<'a, 'b> {
+    pub fn new(mpsse: &'b mut MPSSE<'a>) -> Self {
         Self { mpsse }
     }
 
-    fn set_cs_creset(&self, cs_b: u32, creset_b: u32) -> Result<(), ArrangeError> {
+    fn set_cs_creset(&mut self, cs_b: u32, creset_b: u32) -> Result<(), ArrangeError> {
         let gpio: u8 = 0;
         let mut direction: u8 = 0x03;
 
@@ -102,19 +102,19 @@ impl<'a> Flash<'a> {
         self.mpsse.set_gpio(gpio, direction)
     }
 
-    pub fn release_reset(&self) -> Result<(), ArrangeError> {
+    pub fn release_reset(&mut self) -> Result<(), ArrangeError> {
         self.set_cs_creset(1, 1)
     }
 
-    pub fn chip_select(&self) -> Result<(), ArrangeError> {
+    pub fn chip_select(&mut self) -> Result<(), ArrangeError> {
         self.set_cs_creset(0, 0)
     }
 
-    pub fn chip_deselect(&self) -> Result<(), ArrangeError> {
+    pub fn chip_deselect(&mut self) -> Result<(), ArrangeError> {
         self.set_cs_creset(1, 0)
     }
 
-    pub fn read_id(&self) -> Result<String, ArrangeError> {
+    pub fn read_id(&mut self) -> Result<String, ArrangeError> {
         /* JEDEC ID structure:
          * Byte No. | Data Type
          * ---------+----------
@@ -165,7 +165,7 @@ impl<'a> Flash<'a> {
         Ok(flash_id)
     }
 
-    pub fn reset(&self) -> Result<(), ArrangeError> {
+    pub fn reset(&mut self) -> Result<(), ArrangeError> {
         let cmd: [u8; 8] = [0xff; 8];
 
         self.chip_select()?;
@@ -177,21 +177,21 @@ impl<'a> Flash<'a> {
         self.chip_deselect()
     }
 
-    pub fn power_up(&self) -> Result<(), ArrangeError> {
+    pub fn power_up(&mut self) -> Result<(), ArrangeError> {
         let cmd: [u8; 1] = [FlashCommand::RPD as u8];
         self.chip_select()?;
         self.mpsse.transfer_spi(&cmd)?;
         self.chip_deselect()
     }
 
-    pub fn power_down(&self) -> Result<(), ArrangeError> {
+    pub fn power_down(&mut self) -> Result<(), ArrangeError> {
         let cmd: [u8; 1] = [FlashCommand::PD as u8];
         self.chip_select()?;
         self.mpsse.transfer_spi(&cmd)?;
         self.chip_deselect()
     }
 
-    pub fn read_status(&self) -> Result<u8, ArrangeError> {
+    pub fn read_status(&mut self) -> Result<u8, ArrangeError> {
         let cmd: [u8; 2] = [FlashCommand::RSR1 as u8; 2];
         self.chip_select()?;
         let response = self.mpsse.transfer_spi(&cmd)?;
@@ -260,7 +260,7 @@ impl<'a> Flash<'a> {
         Ok(response[1])
     }
 
-    pub fn write_enable(&self) -> Result<(), ArrangeError> {
+    pub fn write_enable(&mut self) -> Result<(), ArrangeError> {
         debug!("Status before enable: {}", self.read_status()?);
         debug!("Enabling Write...");
 
@@ -270,7 +270,7 @@ impl<'a> Flash<'a> {
         self.chip_deselect()
     }
 
-    pub fn bulk_erase(&self) -> Result<(), ArrangeError> {
+    pub fn bulk_erase(&mut self) -> Result<(), ArrangeError> {
         info!("Bulk Erase...");
 
         let cmd: [u8; 1] = [FlashCommand::CE as u8];
@@ -279,7 +279,7 @@ impl<'a> Flash<'a> {
         self.chip_deselect()
     }
 
-    pub fn sector_erase(&self, be: BlockErase, addr: usize) -> Result<(), ArrangeError> {
+    pub fn sector_erase(&mut self, be: BlockErase, addr: usize) -> Result<(), ArrangeError> {
         info!("Erase {be}kB sector at {:#06X}", addr);
 
         let command: [u8; 4] = match be {
@@ -308,7 +308,7 @@ impl<'a> Flash<'a> {
         self.chip_deselect()
     }
 
-    pub fn prog(&self, addr: usize, data: &[u8]) -> Result<(), ArrangeError> {
+    pub fn prog(&mut self, addr: usize, data: &[u8]) -> Result<(), ArrangeError> {
         debug!("prog {:#06X} +{:#03X}", addr, data.len());
 
         let cmd: [u8; 4] = [
@@ -340,7 +340,7 @@ impl<'a> Flash<'a> {
         Ok(())
     }
 
-    pub fn read(&self, addr: usize, n: usize) -> Result<Vec<u8>, ArrangeError> {
+    pub fn read(&mut self, addr: usize, n: usize) -> Result<Vec<u8>, ArrangeError> {
         debug!("read {:#06X} +{:#03X}", addr, n);
 
         let cmd: [u8; 4] = [
@@ -372,7 +372,7 @@ impl<'a> Flash<'a> {
         Ok(response)
     }
 
-    pub fn wait(&self) -> Result<(), ArrangeError> {
+    pub fn wait(&mut self) -> Result<(), ArrangeError> {
         debug!("Waiting...");
 
         let mut count = 0;
@@ -401,7 +401,7 @@ impl<'a> Flash<'a> {
         Ok(())
     }
 
-    pub fn disable_protection(&self) -> Result<(), ArrangeError> {
+    pub fn disable_protection(&mut self) -> Result<(), ArrangeError> {
         info!("Disable Flash Protection...");
 
         let cmd: [u8; 2] = [FlashCommand::WSR1 as u8, 0];

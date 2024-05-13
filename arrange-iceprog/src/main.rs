@@ -75,11 +75,11 @@ pub fn main() -> Result<(), ArrangeError> {
     let mut arrange = arrange::Arrange::new();
     eprintln!("Initializing MPSSE...");
     arrange.init()?;
-    let mpsse = arrange.get_mpsse();
+    let mpsse = arrange.get_mpsse_mut(true);
     eprintln!("MPSSE initialized.");
     read_cdone!(mpsse);
 
-    let flash = Flash::new(&mpsse);
+    let mut flash = Flash::new(mpsse);
     flash.release_reset()?;
     sleep(Duration::from_millis(100));
     eprintln!("Reset...");

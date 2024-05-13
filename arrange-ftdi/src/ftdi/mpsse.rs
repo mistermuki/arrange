@@ -1,12 +1,9 @@
-use std::{
-    ffi::{c_int, c_uchar},
-    process::exit,
-};
+use std::ffi::{c_int, c_uchar};
 
 use arrange_misc::error::ArrangeError;
 use libftdi1_sys::{
-    ftdi_context, ftdi_deinit, ftdi_disable_bitbang, ftdi_get_error_string, ftdi_get_latency_timer,
-    ftdi_init, ftdi_interface, ftdi_mpsse_mode, ftdi_new, ftdi_read_data, ftdi_set_bitmode,
+    ftdi_context, ftdi_free, ftdi_get_error_string, ftdi_get_latency_timer,
+    ftdi_interface, ftdi_mpsse_mode, ftdi_new, ftdi_read_data, ftdi_set_bitmode,
     ftdi_set_interface, ftdi_set_latency_timer, ftdi_usb_close, ftdi_usb_open,
     ftdi_usb_purge_buffers, ftdi_usb_reset, ftdi_write_data,
 };
@@ -74,14 +71,19 @@ pub enum MPSSECommand {
 
 /// Encapsulates all of the MPSSE (Multi-Protocol Synchronous Serial Engine) instructions used.
 
-pub struct MPSSE {
-    context: *mut ftdi_context,
+pub struct MPSSE<'a> {
+    context: &'a mut ftdi_context,
     latency: c_uchar,
-    open: bool,
     latency_set: bool,
 }
 
-impl MPSSE {
+impl<'a> Drop for MPSSE<'a> {
+    fn drop(&mut self) {
+        self.close()
+    }
+}
+
+impl<'a> MPSSE<'a> {
     const FTDI_VENDOR: c_int = 0x0403;
     const DEVICE_ID_1: c_int = 0x6010;
     const DEVICE_ID_2: c_int = 0x6014;
@@ -103,9 +105,8 @@ impl MPSSE {
 
     pub fn new() -> Self {
         Self {
-            context: unsafe { ftdi_new() },
+            context: unsafe { ftdi_new().as_mut().unwrap() },
             latency: b'0',
-            open: false,
             latency_set: false,
         }
     }
@@ -116,27 +117,25 @@ impl MPSSE {
         device_string: Option<String>,
         slow_clock: bool,
     ) -> Result<(), ArrangeError> {
-        unsafe { ftdi_init(self.context) };
         unsafe { ftdi_set_interface(self.context, interface) };
 
         // Opening the USB connection with the FTDI device.
         match device_string {
             Some(_) => todo!("Implement Device String"),
             None => {
-                let status_1 =
-                    unsafe { ftdi_usb_open(self.context, MPSSE::FTDI_VENDOR, MPSSE::DEVICE_ID_1) };
-                debug!(
-                    "Status of ftdi_usb_open on Device ID: {:#X} is: {status_1}",
-                    MPSSE::DEVICE_ID_1
-                );
-                let status_2 =
-                    unsafe { ftdi_usb_open(self.context, MPSSE::FTDI_VENDOR, MPSSE::DEVICE_ID_2) };
-                debug!(
-                    "Status of ftdi_usb_open on Device ID: {:#X} is: {status_2}",
-                    MPSSE::DEVICE_ID_2
-                );
-
-                if status_1 != 0 && status_2 != 0 {
+                if unsafe { ftdi_usb_open(self.context, MPSSE::FTDI_VENDOR, MPSSE::DEVICE_ID_1) } == 0 {
+                    // First Device ID Failed.
+                    debug!(
+                        "Status of ftdi_usb_open on Device ID: {:#X} is 0",
+                        MPSSE::DEVICE_ID_1
+                    );
+                } else if unsafe { ftdi_usb_open(self.context, MPSSE::FTDI_VENDOR, MPSSE::DEVICE_ID_2) } == 0 {
+                    // Second Device ID Failed.
+                    debug!(
+                        "Status of ftdi_usb_open on Device ID: {:#X} is 0",
+                        MPSSE::DEVICE_ID_2
+                    );
+                } else {
                     debug!(
                         "Can't find iCE FTDI USB Device (Vendor ID: {:#X} with Device IDs {:#X} or {:#x})",
                         MPSSE::FTDI_VENDOR,
@@ -148,8 +147,6 @@ impl MPSSE {
                 }
             }
         }
-
-        self.open = true;
 
         // Try to reset the FTDI Chip.
         let reset_status = unsafe { ftdi_usb_reset(self.context) };
@@ -223,7 +220,7 @@ impl MPSSE {
     }
 
     /// Blocks while waiting to receive a byte.
-    pub fn recv_byte(&self) -> Result<u8, ArrangeError> {
+    pub fn recv_byte(&mut self) -> Result<u8, ArrangeError> {
         let mut data: u8 = 0;
         let data_ptr: *mut u8 = &mut data;
         loop {
@@ -243,7 +240,7 @@ impl MPSSE {
     }
 
     // Writes multiple bytes to the FTDI Device.
-    pub fn send_bytes(&self, data: &[u8]) -> Result<(), ArrangeError> {
+    pub fn send_bytes(&mut self, data: &[u8]) -> Result<(), ArrangeError> {
         let data_len: i32 = data.len() as i32;
         let data_ptr: *const u8 = data.as_ptr();
         let write_count = unsafe { ftdi_write_data(self.context, data_ptr, data_len) };
@@ -259,7 +256,7 @@ impl MPSSE {
     }
 
     /// Writes a byte to the FTDI Device.
-    pub fn send_byte(&self, data: u8) -> Result<(), ArrangeError> {
+    pub fn send_byte(&mut self, data: u8) -> Result<(), ArrangeError> {
         let data_ptr: *const u8 = &data;
         let write_count = unsafe { ftdi_write_data(self.context, data_ptr, 1) };
         if write_count != 1 {
@@ -273,7 +270,7 @@ impl MPSSE {
         Ok(())
     }
 
-    pub fn send_spi(&self, data: &[u8]) -> Result<(), ArrangeError> {
+    pub fn send_spi(&mut self, data: &[u8]) -> Result<(), ArrangeError> {
         if data.len() < 1 {
             return Ok(());
         }
@@ -297,7 +294,7 @@ impl MPSSE {
         Ok(())
     }
 
-    pub fn transfer_spi(&self, data: &[u8]) -> Result<Vec<u8>, ArrangeError> {
+    pub fn transfer_spi(&mut self, data: &[u8]) -> Result<Vec<u8>, ArrangeError> {
         if data.len() < 1 {
             return Ok(vec![]);
         }
@@ -328,7 +325,7 @@ impl MPSSE {
         Ok(return_vec)
     }
 
-    pub fn transfer_spi_bits(&self, data: u8, n: u8) -> Result<u8, ArrangeError> {
+    pub fn transfer_spi_bits(&mut self, data: u8, n: u8) -> Result<u8, ArrangeError> {
         self.send_byte(MPSSE::DATA_IN | MPSSE::DATA_OUT | MPSSE::DATA_OCN | MPSSE::DATA_BITS)?;
         self.send_byte(n - 1)?;
         self.send_byte(data)?;
@@ -336,42 +333,26 @@ impl MPSSE {
         self.recv_byte()
     }
 
-    pub fn set_gpio(&self, gpio: u8, direction: u8) -> Result<(), ArrangeError> {
+    pub fn set_gpio(&mut self, gpio: u8, direction: u8) -> Result<(), ArrangeError> {
         self.send_byte(MPSSECommand::SETBLOW as u8)?;
         self.send_byte(gpio)?;
         self.send_byte(direction)
     }
 
-    pub fn read_low_byte(&self) -> Result<u8, ArrangeError> {
+    pub fn read_low_byte(&mut self) -> Result<u8, ArrangeError> {
         self.send_byte(MPSSECommand::READBLOW as u8)?;
         self.recv_byte()
     }
 
-    pub fn read_high_byte(&self) -> Result<u8, ArrangeError> {
+    pub fn read_high_byte(&mut self) -> Result<u8, ArrangeError> {
         self.send_byte(MPSSECommand::READBHIGH as u8)?;
         self.recv_byte()
     }
 
     /// This closes our FTDI context.
-    pub fn close(&self) -> () {
+    pub fn close(&mut self) -> () {
         unsafe { ftdi_set_latency_timer(self.context, self.latency) };
-        unsafe { ftdi_disable_bitbang(self.context) };
         unsafe { ftdi_usb_close(self.context) };
-        unsafe { ftdi_deinit(self.context) };
-    }
-
-    /// On error, we need to close down the FTDI context and exit from the program.
-    pub fn error(&self, status: i32) -> ! {
-        // check rx
-        debug!("ABORT.");
-        if self.open {
-            if self.latency_set {
-                unsafe { ftdi_set_latency_timer(self.context, self.latency) };
-            }
-
-            unsafe { ftdi_usb_close(self.context) };
-        }
-        unsafe { ftdi_deinit(self.context) };
-        exit(status);
+        unsafe { ftdi_free(self.context) };
     }
 }
